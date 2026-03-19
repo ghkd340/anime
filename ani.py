@@ -256,14 +256,13 @@ def run_auth_shield():
         
     # 2. 쿠키 기반 세션 복구 확인 (로그인 전)
     user_key = f"user_{app_id}"
-    cookies = cookie_manager.get_all()
     
-    if cookies is None:
+    if all_cookies is None:
         st.stop() 
         
-    if user_key in cookies and not st.session_state.get('logged_in'):
+    if user_key in all_cookies and not st.session_state.get('logged_in'):
         try:
-            raw_data = cookies[user_key]
+            raw_data = all_cookies[user_key]
             import urllib.parse
             if isinstance(raw_data, str) and "%22" in raw_data:
                 raw_data = urllib.parse.unquote(raw_data)
@@ -292,22 +291,21 @@ run_auth_shield()
 with st.sidebar:
     st.divider()
     with st.expander("🛠️ 쿠키 상세 진단", expanded=False):
-        cookies = cookie_manager.get_all()
         user_key = f"user_{app_id}"
         
-        if cookies is None:
+        if all_cookies is None:
             st.caption("⏳ 쿠키 매니저 로딩 중...")
-        elif not cookies:
+        elif not all_cookies:
             st.warning("🍪 감지된 쿠키 없음")
             st.info("브라우저 설정에서 '타사 쿠키 차단'이 켜져 있는지 확인해 주세요.")
         else:
-            st.write(f"📊 감지된 키 개수: {len(cookies)}개")
-            st.code(list(cookies.keys()))
+            st.write(f"📊 감지된 키 개수: {len(all_cookies)}개")
+            st.code(list(all_cookies.keys()))
             
-            if user_key in cookies:
+            if user_key in all_cookies:
                 st.success("🎯 앱 쿠키가 브라우저에 존재함")
                 if st.button("내용 보기"):
-                    st.json(cookies[user_key])
+                    st.json(all_cookies[user_key])
             else:
                 st.error("❌ 앱 쿠키가 목록에 없음")
                 

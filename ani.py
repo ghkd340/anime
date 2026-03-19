@@ -175,38 +175,45 @@ def init_firebase():
 db = init_firebase()
 app_id = "k-anime-archive-v3"
 
-# --- DB 함수 ---
-def get_user_watched_ref():
-    if not db or not st.session_state.logged_in: return None
-    user_email = st.session_state.user_info.get("email")
-    return db.collection("artifacts").document(app_id).collection("users").document(user_email).collection("watched")
-
-def load_watched_from_db():
-    ref = get_user_watched_ref()
-    if ref:
-        try:
-            # {ID: {"rating": r, "comment": c, "count": n}} 형식으로 반환
-            return {int(doc.id): {
-                "rating": doc.to_dict().get("rating", 5.0),
-                "comment": doc.to_dict().get("comment", ""),
-                "count": doc.to_dict().get("count", 1)
-            } for doc in ref.stream()}
-        except: return {}
-    return {}
+# --- DB 함수 (캐싱 적용) ---
+@st.cache_data(ttl=600) # 10분 동안 DB 조회 결과 캐싱
+def load_watched_from_db(user_email):
+    """DB에서 사용자의 시청 목록을 가져옵니다. user_email을 인자로 받아 캐시 효율을 높입니다."""
+    if not db or not user_email: return {}
+    try:
+        ref = db.collection("artifacts").document(app_id).collection("users").document(user_email).collection("watched")
+        # {ID: {"rating": r, "comment": c, "count": n}} 형식으로 반환
+        return {int(doc.id): {
+            "rating": doc.to_dict().get("rating", 5.0),
+            "comment": doc.to_dict().get("comment", ""),
+            "count": doc.to_dict().get("count", 1)
+        } for doc in ref.stream()}
+    except Exception as e:
+        st.error(f"데이터 로드 실패: {e}")
+        return {}
 
 def update_db(anime_id, action="add", rating=5.0, comment="", count=1):
-    ref = get_user_watched_ref()
-    if not ref: return
-    if action == "add":
-        ref.document(str(anime_id)).set({
-            "id": anime_id, 
-            "at": datetime.now(), 
-            "rating": rating,
-            "comment": comment,
-            "count": count
-        })
-    else:
-        ref.document(str(anime_id)).delete()
+    """DB에 데이터를 저장하고, 데이터가 변경되었으므로 관련 캐시를 삭제합니다."""
+    if not db or not st.session_state.get("logged_in"): return
+    user_email = st.session_state.user_info.get("email")
+    ref = db.collection("artifacts").document(app_id).collection("users").document(user_email).collection("watched")
+    
+    try:
+        if action == "add":
+            ref.document(str(anime_id)).set({
+                "id": anime_id, 
+                "at": datetime.now(), 
+                "rating": rating,
+                "comment": comment,
+                "count": count
+            })
+        else:
+            ref.document(str(anime_id)).delete()
+        
+        # 데이터가 변경되었으므로 캐시를 비워서 다음 로드 때 최신 정보를 가져오게 함
+        load_watched_from_db.clear()
+    except Exception as e:
+        st.error(f"DB 업데이트 실패: {e}")
 
 # 3. 구글 OAuth 설정 함수
 def get_google_auth_flow():
@@ -238,7 +245,8 @@ def get_google_auth_flow():
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_info = None
-    st.session_state.watched_list = {}
+    # None으로 초기화하여 "데이터를 아직 안 불러옴"과 "목록이 비어있음"을 구분 (DB 읽기 최적화)
+    st.session_state.watched_list = None
     st.session_state.auth_checked = False
     st.session_state.logout_clicked = False # 로그아웃 플래그 추가
 
@@ -283,7 +291,9 @@ def run_auth_shield():
             if user_info and isinstance(user_info, dict) and "email" in user_info:
                 st.session_state.user_info = user_info
                 st.session_state.logged_in = True
-                st.session_state.watched_list = load_watched_from_db()
+                # 쿠키로 복구 시 시청 목록도 함께 로드
+                if st.session_state.watched_list is None:
+                    st.session_state.watched_list = load_watched_from_db(user_info["email"])
                 st.rerun() 
         except Exception as e:
             pass
@@ -315,16 +325,19 @@ with st.sidebar:
         st.divider()
         st.write("📂 **데이터 상태**")
         if st.session_state.logged_in:
-            st.write(f"📧 계정: {st.session_state.user_info.get('email')}")
-            st.write(f"✅ 시청 목록: {len(st.session_state.watched_list)}개")
+            user_email = st.session_state.user_info.get('email')
+            st.write(f"📧 계정: {user_email}")
+            watched_data = st.session_state.watched_list or {}
+            st.write(f"✅ 시청 목록: {len(watched_data)}개")
             if st.button("🔄 데이터 수동 동기화"):
                 with st.spinner("서버에서 데이터를 가져오는 중..."):
-                    st.session_state.watched_list = load_watched_from_db()
+                    load_watched_from_db.clear() # 캐시 강제 삭제
+                    st.session_state.watched_list = load_watched_from_db(user_email)
                     if st.session_state.watched_list:
                         st.success(f"{len(st.session_state.watched_list)}개의 데이터를 찾았습니다!")
                         st.rerun()
                     else:
-                        st.warning("찾은 데이터가 없습니다. (계정 확인 필요)")
+                        st.warning("찾은 데이터가 없거나 불러오지 못했습니다.")
         else:
             st.info("로그인 후 데이터 상태를 확인할 수 있습니다.")
                 
@@ -380,7 +393,7 @@ if "code" in q_params:
         if isinstance(result, dict):
             st.session_state.logged_in = True
             st.session_state.user_info = result
-            st.session_state.watched_list = load_watched_from_db()
+            st.session_state.watched_list = load_watched_from_db(result.get("email"))
             
             # 쿠키 저장 (이름 단순화 및 Base64 인코딩으로 성공률 극대화)
             try:
@@ -436,9 +449,10 @@ if "code" in q_params:
         st.error("인증 정보를 찾을 수 없습니다. (세션 만료) 다시 로그인 버튼을 눌러주세요.")
         st.query_params.clear()
 
-# 로그인 직후 DB 데이터가 없는 경우를 위한 보정
-if st.session_state.logged_in and not st.session_state.watched_list:
-    st.session_state.watched_list = load_watched_from_db()
+# 로그인 직후 또는 새로고침 시 데이터 로드 보정 (is None 체크로 무한 호출 방지)
+if st.session_state.logged_in and st.session_state.watched_list is None:
+    st.session_state.watched_list = load_watched_from_db(st.session_state.user_info.get("email"))
+
 
 # 5. 사이드바 UI
 with st.sidebar:

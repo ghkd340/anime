@@ -631,7 +631,7 @@ with st.sidebar:
             
             # 한국어 장르 맵핑 (표시용)
             ko_genre_map = {
-                "Action": "액션", "Adventure": "모험", "Comedy": "코미디", "Drama": "드라마", 
+                "Action": "액션", "Adventure": "모험", "Comedy": "코미디", "Drama": "드라마", "Ecchi": "에치",
                 "Fantasy": "판타지", "Horror": "공포", "Mahou Shoujo": "마법소녀", "Mecha": "메카", 
                 "Music": "음악", "Mystery": "미스터리", "Psychological": "심리", "Romance": "로맨스", 
                 "Sci-Fi": "SF", "Slice of Life": "일상", "Sports": "스포츠", "Supernatural": "초자연", "Thriller": "스릴러"
@@ -836,14 +836,14 @@ with st.sidebar:
                         });
                     }
                     
-                    // 2. 년도, 포함 장르, 제외 장르: 키보드 팝업 방지
+                    // 2. 필터류 (년도, 분기, 장르, 시청여부): 키보드 팝업 및 커서 방지
                     const container = input.closest('div[data-testid="stSelectbox"], div[data-testid="stMultiSelect"]');
                     if (container) {
                         const label = container.querySelector('label');
-                        if (label && ["년도", "포함 장르", "제외 장르"].some(text => label.textContent.trim() === text)) {
+                        if (label && ["년도", "분기", "포함 장르", "제외 장르", "시청 여부"].some(text => label.textContent.trim() === text)) {
                             // inputmode="none"은 모바일 키보드를 띄우지 않게 함
                             input.setAttribute('inputmode', 'none');
-                            // readonly는 텍스트 입력을 막아 검색 기능을 비활성화 (분기/시청여부와 동일한 동작)
+                            // readonly는 텍스트 입력을 막고 커서(I-beam)가 생기는 것을 방지함
                             input.setAttribute('readonly', 'true');
                             input.style.cursor = 'pointer';
                         }
@@ -877,7 +877,7 @@ with st.sidebar:
     
     # 장르 선택
     genre_map = {
-        "액션": "Action", "모험": "Adventure", "코미디": "Comedy", "드라마": "Drama", 
+        "액션": "Action", "모험": "Adventure", "코미디": "Comedy", "드라마": "Drama", "에치": "Ecchi",
         "판타지": "Fantasy", "공포": "Horror", "마법소녀": "Mahou Shoujo", "메카": "Mecha", 
         "음악": "Music", "미스터리": "Mystery", "심리": "Psychological", "로맨스": "Romance", 
         "SF": "Sci-Fi", "일상": "Slice of Life", "스포츠": "Sports", "초자연": "Supernatural", "스릴러": "Thriller"

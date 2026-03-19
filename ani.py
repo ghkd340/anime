@@ -309,10 +309,24 @@ with st.sidebar:
             
             if user_key in all_cookies:
                 st.success("🎯 앱 쿠키가 브라우저에 존재함")
-                if st.button("내용 보기"):
-                    st.json(all_cookies[user_key])
             else:
                 st.error("❌ 앱 쿠키가 목록에 없음")
+        
+        st.divider()
+        st.write("📂 **데이터 상태**")
+        if st.session_state.logged_in:
+            st.write(f"📧 계정: {st.session_state.user_info.get('email')}")
+            st.write(f"✅ 시청 목록: {len(st.session_state.watched_list)}개")
+            if st.button("🔄 데이터 수동 동기화"):
+                with st.spinner("서버에서 데이터를 가져오는 중..."):
+                    st.session_state.watched_list = load_watched_from_db()
+                    if st.session_state.watched_list:
+                        st.success(f"{len(st.session_state.watched_list)}개의 데이터를 찾았습니다!")
+                        st.rerun()
+                    else:
+                        st.warning("찾은 데이터가 없습니다. (계정 확인 필요)")
+        else:
+            st.info("로그인 후 데이터 상태를 확인할 수 있습니다.")
                 
         if st.button("🧪 즉석 쿠키 테스트"):
             test_key = "test_cookie_123"

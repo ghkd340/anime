@@ -249,6 +249,30 @@ def update_db(anime_id, action="add", rating=5.0, comment="", count=1):
     # 캐시 클리어는 즉시 수행하여 다음 로드 시 반영되도록 함
     load_watched_from_db.clear()
 
+def batch_update_db(data_dict):
+    """대량의 데이터를 한 번에 업데이트합니다."""
+    if not db or not st.session_state.get("logged_in"): return
+    user_email = st.session_state.user_info.get("email")
+    user_ref = db.collection("artifacts").document(app_id).collection("users").document(user_email)
+    
+    def run_in_thread():
+        try:
+            # Firestore에 저장할 때는 키가 문자열이어야 함
+            db_data = {}
+            for aid, info in data_dict.items():
+                db_data[str(aid)] = {
+                    "id": int(aid),
+                    "at": datetime.now(),
+                    "rating": float(info.get('rating', 5.0)),
+                    "comment": str(info.get('comment', "")),
+                    "count": int(info.get('count', 1))
+                }
+            user_ref.set({"watched": db_data}, merge=True)
+        except Exception: pass
+
+    threading.Thread(target=run_in_thread, daemon=True).start()
+    load_watched_from_db.clear()
+
 # --- 유틸리티 함수 (Module Level) ---
 @st.cache_data(ttl=86400)
 def get_watched_metadata(ids):
@@ -628,6 +652,67 @@ with st.sidebar:
                     """, unsafe_allow_html=True)
             else:
                 st.caption("데이터가 없습니다.")
+
+        # --- 데이터 내보내기/가져오기 섹션 ---
+        with st.expander("💾 데이터 내보내기/가져오기"):
+            # 1. 내보내기 (Export)
+            if watched_count > 0:
+                # JSON 직렬화 가능한 형태로 변환 (datetime 등 제외)
+                export_dict = {}
+                for aid, info in current_watched.items():
+                    export_dict[str(aid)] = {
+                        "rating": info.get("rating", 5.0),
+                        "comment": info.get("comment", ""),
+                        "count": info.get("count", 1)
+                    }
+                json_str = json.dumps(export_dict, ensure_ascii=False, indent=2)
+                st.download_button(
+                    label="📥 JSON으로 내보내기",
+                    data=json_str,
+                    file_name=f"anime_archive_{datetime.now().strftime('%Y%m%d')}.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
+            else:
+                st.caption("내보낼 데이터가 없습니다.")
+            
+            st.divider()
+            
+            # 2. 가져오기 (Import)
+            uploaded_file = st.file_uploader("JSON 파일 가져오기", type=["json"], help="기존에 내보낸 JSON 파일을 업로드하세요.")
+            if uploaded_file:
+                try:
+                    import_data = json.load(uploaded_file)
+                    if st.button("🚀 데이터 병합 및 업로드", use_container_width=True, type="primary"):
+                        # 유효성 검사 및 정규화
+                        valid_data = {}
+                        for k, v in import_data.items():
+                            try:
+                                aid = int(k)
+                                valid_data[aid] = {
+                                    "rating": float(v.get("rating", 5.0)),
+                                    "comment": str(v.get("comment", "")),
+                                    "count": int(v.get("count", 1))
+                                }
+                            except: continue
+                        
+                        if valid_data:
+                            # 현재 세션 상태와 병합
+                            if st.session_state.watched_list is None:
+                                st.session_state.watched_list = {}
+                            
+                            # 병합 (가져온 데이터가 우선)
+                            st.session_state.watched_list.update(valid_data)
+                            
+                            # Firebase에 업데이트 (병합된 전체 목록 전송)
+                            batch_update_db(st.session_state.watched_list)
+                            
+                            st.success(f"✅ {len(valid_data)}개의 데이터를 성공적으로 가져왔습니다!")
+                            st.rerun()
+                        else:
+                            st.error("가져올 수 있는 유효한 데이터가 없습니다.")
+                except Exception as e:
+                    st.error(f"파일 처리 오류: {e}")
 
         sc1, sc2 = st.columns(2)
         with sc1:

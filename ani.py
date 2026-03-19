@@ -5,6 +5,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import json
 import os
+import random
 import extra_streamlit_components as stx
 
 # 구글 인증 관련 라이브러리
@@ -310,6 +311,8 @@ if 'logged_in' not in st.session_state:
     st.session_state.logout_clicked = False # 로그아웃 플래그 추가
 
 if 'all_media' not in st.session_state: st.session_state.all_media = []
+if 'random_media' not in st.session_state: st.session_state.random_media = None
+if 'is_random_mode' not in st.session_state: st.session_state.is_random_mode = False
 if 'page' not in st.session_state: st.session_state.page = 1
 if 'has_next' not in st.session_state: st.session_state.has_next = True
 if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
@@ -379,6 +382,106 @@ def run_auth_shield():
 
 # 보호막 가동
 run_auth_shield()
+
+# 6. API 호출 (캐싱)
+@st.cache_data(ttl=3600)
+def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
+    url = 'https://graphql.anilist.co'
+    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site }"
+    
+    # AniList expects sort to be an array [MediaSort]
+    if isinstance(sort, str):
+        sort = [sort]
+        
+    base_vars = {'p': page, 'sort': sort}
+    if year: base_vars['y'] = year
+    if season: base_vars['s'] = season
+    if genres: base_vars['g'] = genres
+    if ex_genres: base_vars['eg'] = ex_genres
+    if search: base_vars['q'] = search
+    if ids is not None: base_vars['ids'] = ids
+    if exclude_ids is not None: base_vars['ex_ids'] = exclude_ids
+
+    def build_query(is_adult_filter):
+        return f'''
+        query ($y: Int, $s: MediaSeason, $p: Int, $sort: [MediaSort], $g: [String], $eg: [String], $q: String, $ids: [Int], $ex_ids: [Int]) {{
+          Page(page: $p, perPage: 24) {{
+            pageInfo {{ lastPage hasNextPage }}
+            media(id_in: $ids, id_not_in: $ex_ids, search: $q, season: $s, seasonYear: $y, type: ANIME, sort: $sort, genre_in: $g, genre_not_in: $eg, isAdult: {is_adult_filter}) {{
+              {media_fields}
+            }}
+          }}
+        }}
+        '''
+
+    def make_request(is_adult):
+        try:
+            payload = {'query': build_query("true" if is_adult else "false"), 'variables': base_vars}
+            res = requests.post(url, json=payload, timeout=10)
+            res.raise_for_status()
+            res_json = res.json()
+            if 'errors' in res_json:
+                return None, res_json['errors']
+            return res_json.get('data', {}).get('Page'), None
+        except Exception as e:
+            return None, str(e)
+
+    try:
+        if not include_adult:
+            data, errors = make_request(False)
+            if errors:
+                st.error(f"API Error: {errors}")
+                return None
+            return data
+        else:
+            # 병합 모드: 일반물과 성인물을 각각 조회하여 병합
+            d_normal, e_normal = make_request(False)
+            d_adult, e_adult = make_request(True)
+            
+            if e_normal and e_adult:
+                st.error(f"API Error (Normal): {e_normal}")
+                st.error(f"API Error (Adult): {e_adult}")
+                return None
+                
+            d_normal = d_normal or {}
+            d_adult = d_adult or {}
+            
+            combined_media = d_normal.get('media', []) + d_adult.get('media', [])
+            
+            # 파이썬 재정렬
+            if "POPULARITY_DESC" in sort:
+                combined_media.sort(key=lambda x: x.get('popularity', 0), reverse=True)
+            elif "SCORE_DESC" in sort:
+                combined_media.sort(key=lambda x: x.get('averageScore', 0) or 0, reverse=True)
+            elif "TITLE_DESC" in sort:
+                combined_media.sort(key=lambda x: (x['title']['native'] or x['title']['romaji'] or ""), reverse=True)
+            
+            return {
+                "pageInfo": {
+                    "lastPage": max(d_normal.get('pageInfo', {}).get('lastPage', 1), d_adult.get('pageInfo', {}).get('lastPage', 1)),
+                    "hasNextPage": d_normal.get('pageInfo', {}).get('hasNextPage', False) or d_adult.get('pageInfo', {}).get('hasNextPage', False)
+                },
+                "media": combined_media[:24]
+            }
+    except Exception as e:
+        st.error(f"Fetch Error: {e}")
+        return None
+
+def fetch_random_anime(year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
+    """필터에 맞는 작품 중 무작위로 한 페이지를 가져옵니다."""
+    # 1. 먼저 전체 페이지 수를 확인하기 위해 1개만 요청
+    first_page = fetch_anime(1, "POPULARITY_DESC", year, season, genres, ex_genres, search, ids, exclude_ids, include_adult)
+    if not first_page or not first_page.get('media'):
+        return None
+    
+    last_page = first_page['pageInfo']['lastPage']
+    # 2. 랜덤 페이지 선택
+    random_p = random.randint(1, last_page)
+    # 3. 해당 페이지 데이터 가져오기 (캐싱 방지를 위해 sort에 무작위성 가미는 어려우니 순서만 섞음)
+    result = fetch_anime(random_p, "POPULARITY_DESC", year, season, genres, ex_genres, search, ids, exclude_ids, include_adult)
+    if result and result.get('media'):
+        random.shuffle(result['media'])
+    return result
 
 # 5. 사이드바 UI
 with st.sidebar:
@@ -598,8 +701,11 @@ with st.sidebar:
     excluded_genres = st.multiselect("제외 장르", list(genre_map.keys()))
     s_ex_genres = [genre_map[g] for g in excluded_genres] if excluded_genres else None
     
-    only_w = st.checkbox("내가 본 작품만") if st.session_state.logged_in else False
-    only_not_w = st.checkbox("내가 안 본 작품만") if st.session_state.logged_in else False
+    # 시청 여부 필터 (Mutual Exclusive)
+    watch_options = ["전체", "본 작품만", "안 본 작품만"]
+    s_watch = st.selectbox("시청 여부", watch_options) if st.session_state.logged_in else "전체"
+    only_w = (s_watch == "본 작품만")
+    only_not_w = (s_watch == "안 본 작품만")
     
     # 성인물 설정 (쿼리 파라미터 연동으로 새로고침 유지)
     adult_param = st.query_params.get("adult", "false") == "true"
@@ -615,93 +721,44 @@ with st.sidebar:
     if only_w:
         s_rating = st.slider("최소 평점 (내 평점)", 0.0, 5.0, 0.0, 0.1)
 
-    # if st.button("적용"):
-    #     st.session_state.page = 1
-    #     st.rerun()
-
-# 6. API 호출 (캐싱)
-@st.cache_data(ttl=3600)
-def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
-    url = 'https://graphql.anilist.co'
-    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site }"
-    
-    # AniList expects sort to be an array [MediaSort]
-    if isinstance(sort, str):
-        sort = [sort]
-        
-    base_vars = {'p': page, 'sort': sort}
-    if year: base_vars['y'] = year
-    if season: base_vars['s'] = season
-    if genres: base_vars['g'] = genres
-    if ex_genres: base_vars['eg'] = ex_genres
-    if search: base_vars['q'] = search
-    if ids is not None: base_vars['ids'] = ids
-    if exclude_ids is not None: base_vars['ex_ids'] = exclude_ids
-
-    def build_query(is_adult_filter):
-        return f'''
-        query ($y: Int, $s: MediaSeason, $p: Int, $sort: [MediaSort], $g: [String], $eg: [String], $q: String, $ids: [Int], $ex_ids: [Int]) {{
-          Page(page: $p, perPage: 24) {{
-            pageInfo {{ lastPage hasNextPage }}
-            media(id_in: $ids, id_not_in: $ex_ids, search: $q, season: $s, seasonYear: $y, type: ANIME, sort: $sort, genre_in: $g, genre_not_in: $eg, isAdult: {is_adult_filter}) {{
-              {media_fields}
-            }}
-          }}
-        }}
-        '''
-
-    def make_request(is_adult):
-        try:
-            payload = {'query': build_query("true" if is_adult else "false"), 'variables': base_vars}
-            res = requests.post(url, json=payload, timeout=10)
-            res.raise_for_status()
-            res_json = res.json()
-            if 'errors' in res_json:
-                return None, res_json['errors']
-            return res_json.get('data', {}).get('Page'), None
-        except Exception as e:
-            return None, str(e)
-
-    try:
-        if not include_adult:
-            data, errors = make_request(False)
-            if errors:
-                st.error(f"API Error: {errors}")
-                return None
-            return data
-        else:
-            # 병합 모드: 일반물과 성인물을 각각 조회하여 병합
-            d_normal, e_normal = make_request(False)
-            d_adult, e_adult = make_request(True)
+    st.divider()
+    if st.button("🎲 랜덤 추천 받기", use_container_width=True, type="primary"):
+        with st.spinner("랜덤 작품 찾는 중..."):
+            # 필터링 조건 정리
+            target_ids = None
+            exclude_ids = None
+            current_watched = st.session_state.watched_list or {}
             
-            if e_normal and e_adult:
-                st.error(f"API Error (Normal): {e_normal}")
-                st.error(f"API Error (Adult): {e_adult}")
-                return None
-                
-            d_normal = d_normal or {}
-            d_adult = d_adult or {}
+            if only_w:
+                target_ids = [aid for aid, info in current_watched.items() if info.get('rating', 0) >= s_rating]
+                if not target_ids: target_ids = [0]
+                else: target_ids = target_ids[:500]
             
-            combined_media = d_normal.get('media', []) + d_adult.get('media', [])
+            if only_not_w:
+                exclude_ids = list(current_watched.keys())
+                if exclude_ids: exclude_ids = exclude_ids[:500]
+
+            random_data = fetch_random_anime(
+                s_year, s_season, s_genres, s_ex_genres,
+                new_search if new_search else None,
+                ids=target_ids,
+                exclude_ids=exclude_ids,
+                include_adult=s_adult
+            )
             
-            # 파이썬 재정렬
-            if "POPULARITY_DESC" in sort:
-                combined_media.sort(key=lambda x: x.get('popularity', 0), reverse=True)
-            elif "SCORE_DESC" in sort:
-                combined_media.sort(key=lambda x: x.get('averageScore', 0) or 0, reverse=True)
-            elif "TITLE_DESC" in sort:
-                combined_media.sort(key=lambda x: (x['title']['native'] or x['title']['romaji'] or ""), reverse=True)
-            
-            return {
-                "pageInfo": {
-                    "lastPage": max(d_normal.get('pageInfo', {}).get('lastPage', 1), d_adult.get('pageInfo', {}).get('lastPage', 1)),
-                    "hasNextPage": d_normal.get('pageInfo', {}).get('hasNextPage', False) or d_adult.get('pageInfo', {}).get('hasNextPage', False)
-                },
-                "media": combined_media[:24]
-            }
-    except Exception as e:
-        st.error(f"Fetch Error: {e}")
-        return None
+            if random_data:
+                st.session_state.all_media = random_data['media']
+                st.session_state.is_random_mode = True
+                st.session_state.random_media = None
+                st.rerun()
+            else:
+                st.warning("조건에 맞는 작품이 없습니다.")
+
+    if st.session_state.is_random_mode:
+        if st.button("🔙 일반 목록으로", use_container_width=True):
+            st.session_state.is_random_mode = False
+            st.session_state.all_media = [] # 목록 초기화하여 1페이지부터 다시 로드
+            st.rerun()
 
 # 정렬 옵션 설정
 sort_map = {"인기도순": "POPULARITY_DESC", "평점순": "SCORE_DESC"}
@@ -721,6 +778,8 @@ if st.session_state.last_filters != current_filters:
     st.session_state.page = 1
     st.session_state.last_filters = current_filters
     st.session_state.has_next = True
+    st.session_state.is_random_mode = False
+    st.session_state.random_media = None
 
 # 데이터 로드 (필요할 때만)
 if st.session_state.has_next and (not st.session_state.all_media or len(st.session_state.all_media) < st.session_state.page * 24):
@@ -790,7 +849,9 @@ total_loaded = len(anime_list)
 # 상단 헤더 및 정렬 UI
 h_col1, h_col2 = st.columns([4, 1])
 with h_col1:
-    if new_search:
+    if st.session_state.is_random_mode:
+        st.title(f"🎲 랜덤 추천 결과 ({total_loaded}개)")
+    elif new_search:
         st.title(f"🔍 '{new_search}' 검색 결과 ({total_loaded}개)")
     else:
         title_parts = [] 
@@ -800,7 +861,8 @@ with h_col1:
         st.title(f"📅 {title_text} Archive ({total_loaded}개)")
 with h_col2:
     st.write("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-    st.selectbox("정렬 방식", list(sort_map.keys()), key="sort_by", label_visibility="collapsed")
+    if not st.session_state.is_random_mode:
+        st.selectbox("정렬 방식", list(sort_map.keys()), key="sort_by", label_visibility="collapsed")
 
 st.divider()
 
@@ -904,10 +966,44 @@ else:
             st.write("") 
 
     # 하단 네비게이션 로직 (수동 로딩)
-    if st.session_state.has_next:
-        st.write("---")
-        if st.button("작품 더 보기", use_container_width=True):
-            st.session_state.page += 1
-            st.rerun()
+    st.write("---")
+    if st.session_state.is_random_mode:
+        if st.button("🎲 랜덤 작품 더 보기", use_container_width=True):
+            with st.spinner("새로운 랜덤 작품 찾는 중..."):
+                # 필터링 조건 정리
+                target_ids = None
+                exclude_ids = None
+                current_watched = st.session_state.watched_list or {}
+                
+                if only_w:
+                    target_ids = [aid for aid, info in current_watched.items() if info.get('rating', 0) >= s_rating]
+                    if not target_ids: target_ids = [0]
+                    else: target_ids = target_ids[:500]
+                
+                if only_not_w:
+                    exclude_ids = list(current_watched.keys())
+                    if exclude_ids: exclude_ids = exclude_ids[:500]
+
+                new_random = fetch_random_anime(
+                    s_year, s_season, s_genres, s_ex_genres,
+                    new_search if new_search else None,
+                    ids=target_ids,
+                    exclude_ids=exclude_ids,
+                    include_adult=s_adult
+                )
+                if new_random:
+                    # 중복 제거하며 추가
+                    existing_ids = {m['id'] for m in st.session_state.all_media}
+                    for item in new_random['media']:
+                        if item['id'] not in existing_ids:
+                            st.session_state.all_media.append(item)
+                    st.rerun()
+                else:
+                    st.warning("추가할 수 있는 작품이 없습니다.")
     else:
-        st.info("모든 작품을 불러왔습니다.")
+        if st.session_state.has_next:
+            if st.button("작품 더 보기", use_container_width=True):
+                st.session_state.page += 1
+                st.rerun()
+        else:
+            st.info("모든 작품을 불러왔습니다.")

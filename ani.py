@@ -345,12 +345,25 @@ if "code" in q_params:
                     "email": result.get("email"),
                     "picture": result.get("picture")
                 }
+                # 1. 기존 라이브러리 방식 (로컬용)
                 cookie_manager.set(
                     f"user_{app_id}", 
                     json.dumps(cookie_data), 
                     expires_at=datetime.now() + timedelta(days=30)
                 )
-                # URL 파라미터에도 세션 정보 저장 (쿠키 차단 대비)
+                
+                # 2. 자바스크립트 강제 주입 방식 (배포 환경/Iframe용: SameSite=None; Secure 명시)
+                expires = (datetime.now() + timedelta(days=30)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                # JSON 문자열 내의 따옴표를 자바스크립트 문자열 내에서 안전하게 사용할 수 있도록 이스케이프 처리
+                js_cookie_value = json.dumps(cookie_data).replace('"', '\\"')
+                cookie_js = f"""
+                    <script>
+                        document.cookie = "user_{app_id}={js_cookie_value}; expires={expires}; path=/; SameSite=None; Secure";
+                    </script>
+                """
+                st.components.v1.html(cookie_js, height=0)
+
+                # 3. URL 파라미터에도 세션 정보 저장 (최후의 보루)
                 session_str = json.dumps(cookie_data)
                 st.query_params["session"] = base64.b64encode(session_str.encode()).decode()
             except: pass

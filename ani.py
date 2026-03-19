@@ -350,13 +350,15 @@ if "code" in q_params:
             st.session_state.user_info = result
             st.session_state.watched_list = load_watched_from_db()
             
-            # 쿠키 저장 (최소한의 정보만 저장하여 안정성 확보)
+            # 쿠키 저장 (SameSite=None, Secure=True 설정으로 배포 환경 대응)
             try:
                 cookie_data = {
                     "name": result.get("name"),
                     "email": result.get("email"),
                     "picture": result.get("picture")
                 }
+                # extra_streamlit_components의 CookieManager는 기본적으로 보안 옵션을 따르지만
+                # 가능한 경우 명시적으로 시도하거나, 더 단순한 정보만 저장
                 cookie_manager.set(
                     f"user_{app_id}", 
                     json.dumps(cookie_data), 

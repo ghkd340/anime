@@ -819,70 +819,42 @@ with st.sidebar:
     search_q = st.query_params.get("q", "")
     new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목", key="search_input")
 
-    # 모바일 최적화 통합 JS (키보드 제어, 사이드바 자동 닫기)
+    # 모바일 키보드 제어 JS (검색창은 키보드 활성화, 필터류는 비활성화)
     st.components.v1.html("""
         <script>
-            function handleMobileInteractions() {
-                const parentDoc = window.parent.document;
+            function setupInputs() {
+                const doc = window.parent.document;
+                const inputs = doc.querySelectorAll('input');
                 
-                // 1. 입력창별 키보드 제어
-                const allInputs = parentDoc.querySelectorAll('[data-testid="stSidebar"] input');
-                allInputs.forEach(input => {
-                    const container = input.closest('[data-testid="stVerticalBlock"]');
-                    const label = container ? container.querySelector('label') : null;
-                    const labelText = label ? label.innerText : "";
-
-                    // 제목 검색창: 검색 타입으로 변경 (돋보기 아이콘)
+                inputs.forEach(input => {
+                    // 1. 제목 검색창: 키보드 '검색' 버튼 설정
                     if (input.placeholder === "영문 또는 일문 제목") {
                         input.type = "search";
                         input.setAttribute("enterkeyhint", "search");
-                        input.removeEventListener("keydown", input._searchHandler);
-                        input._searchHandler = (e) => {
-                            if (e.key === "Enter") {
-                                input.blur();
-                                closeSidebarIfMobile();
-                            }
-                        };
-                        input.addEventListener("keydown", input._searchHandler);
+                        input.addEventListener("keydown", (e) => {
+                            if (e.key === "Enter") input.blur();
+                        });
                     }
                     
-                    // 년도, 장르 선택창: 클릭 시 키보드 안 나오게 설정
-                    if (labelText.includes("년도") || labelText.includes("장르")) {
-                        input.setAttribute("inputmode", "none");
-                        input.setAttribute("readonly", "true");
-                        input.style.cursor = "pointer";
-                    }
-                });
-
-                // 2. 특정 버튼 클릭 시 사이드바 닫기 처리
-                const buttons = parentDoc.querySelectorAll('button');
-                buttons.forEach(btn => {
-                    const btnText = btn.innerText;
-                    if (btnText.includes("랜덤 추천 받기") || btnText.includes("일반 목록으로")) {
-                        btn.removeEventListener("click", btn._sidebarHandler);
-                        btn._sidebarHandler = () => {
-                            setTimeout(closeSidebarIfMobile, 100);
-                        };
-                        btn.addEventListener("click", btn._sidebarHandler);
+                    // 2. 년도, 포함 장르, 제외 장르: 키보드 팝업 방지
+                    const container = input.closest('div[data-testid="stSelectbox"], div[data-testid="stMultiSelect"]');
+                    if (container) {
+                        const label = container.querySelector('label');
+                        if (label && ["년도", "포함 장르", "제외 장르"].some(text => label.textContent.trim() === text)) {
+                            // inputmode="none"은 모바일 키보드를 띄우지 않게 함
+                            input.setAttribute('inputmode', 'none');
+                            // readonly는 텍스트 입력을 막아 검색 기능을 비활성화 (분기/시청여부와 동일한 동작)
+                            input.setAttribute('readonly', 'true');
+                            input.style.cursor = 'pointer';
+                        }
                     }
                 });
             }
 
-            function closeSidebarIfMobile() {
-                if (window.parent.innerWidth < 768) {
-                    const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
-                    if (sidebar && sidebar.offsetParent !== null) {
-                        const closeBtn = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]') || 
-                                         window.parent.document.querySelector('button[aria-label="Close sidebar"]');
-                        if (closeBtn) closeBtn.click();
-                    }
-                }
-            }
-            
-            // 실행
-            setTimeout(handleMobileInteractions, 500);
-            setTimeout(handleMobileInteractions, 1500);
-            setTimeout(handleMobileInteractions, 3000);
+            // Streamlit의 렌더링 타이밍을 고려하여 지연 실행 및 반복 실행
+            setTimeout(setupInputs, 500);
+            setTimeout(setupInputs, 1500);
+            setTimeout(setupInputs, 2500);
         </script>
     """, height=0)
 

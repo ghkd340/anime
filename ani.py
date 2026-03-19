@@ -363,6 +363,8 @@ if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
 if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 if 'action_cnt' not in st.session_state: st.session_state.action_cnt = 0
 
+if 'recent_searches' not in st.session_state: st.session_state.recent_searches = []
+
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
     # 1. URL에 logout=true가 있으면 자동 로그인 차단
@@ -819,6 +821,35 @@ with st.sidebar:
     search_q = st.query_params.get("q", "")
     new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목", key="search_input")
 
+    # --- 최근 검색어 UI ---
+    if st.session_state.recent_searches:
+        # 칩 스타일 버튼을 위한 CSS
+        st.markdown("""
+        <style>
+            div[data-testid="column"] button[kind="secondary"] {
+                padding: 0.15rem 0.5rem !important;
+                font-size: 0.75rem !important;
+                min-height: unset !important;
+                height: 24px !important;
+                border-radius: 12px !important;
+                background-color: rgba(128, 128, 128, 0.05);
+                border: 1px solid rgba(128, 128, 128, 0.2);
+            }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        rs_list = st.session_state.recent_searches
+        # 검색어 개수에 맞게 컬럼 생성 (최대 5개 + 삭제버튼)
+        cols_rs = st.columns([1] * len(rs_list) + [0.5])
+        for i, word in enumerate(rs_list):
+            if cols_rs[i].button(word, key=f"rs_btn_{i}", use_container_width=True):
+                st.query_params["q"] = word
+                st.session_state.page = 1
+                st.rerun()
+        if cols_rs[-1].button("🗑️", key="rs_clear", help="최근 검색어 삭제"):
+            st.session_state.recent_searches = []
+            st.rerun()
+
     # 모바일 키보드 제어 JS (검색창은 키보드 활성화, 필터류는 비활성화)
     st.components.v1.html("""
         <script>
@@ -859,6 +890,13 @@ with st.sidebar:
     """, height=0)
 
     if new_search != search_q:
+        # 최근 검색어 업데이트
+        if new_search.strip():
+            rs = st.session_state.recent_searches
+            if new_search in rs: rs.remove(new_search)
+            rs.insert(0, new_search)
+            st.session_state.recent_searches = rs[:5]
+            
         st.query_params["q"] = new_search
         st.session_state.page = 1
         st.rerun()

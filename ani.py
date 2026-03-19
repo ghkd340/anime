@@ -819,15 +819,20 @@ with st.sidebar:
     search_q = st.query_params.get("q", "")
     new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목", key="search_input")
 
-    # 모바일 키보드 '돋보기' 설정 및 검색/버튼 클릭 시 사이드바 자동 닫기 JS
+    # 모바일 최적화 통합 JS (키보드 제어, 사이드바 자동 닫기)
     st.components.v1.html("""
         <script>
             function handleMobileInteractions() {
                 const parentDoc = window.parent.document;
                 
-                // 1. 제목 검색 입력창 처리
-                const inputs = parentDoc.querySelectorAll('input[type="text"]');
-                inputs.forEach(input => {
+                // 1. 입력창별 키보드 제어
+                const allInputs = parentDoc.querySelectorAll('[data-testid="stSidebar"] input');
+                allInputs.forEach(input => {
+                    const container = input.closest('[data-testid="stVerticalBlock"]');
+                    const label = container ? container.querySelector('label') : null;
+                    const labelText = label ? label.innerText : "";
+
+                    // 제목 검색창: 검색 타입으로 변경 (돋보기 아이콘)
                     if (input.placeholder === "영문 또는 일문 제목") {
                         input.type = "search";
                         input.setAttribute("enterkeyhint", "search");
@@ -840,16 +845,22 @@ with st.sidebar:
                         };
                         input.addEventListener("keydown", input._searchHandler);
                     }
+                    
+                    // 년도, 장르 선택창: 클릭 시 키보드 안 나오게 설정
+                    if (labelText.includes("년도") || labelText.includes("장르")) {
+                        input.setAttribute("inputmode", "none");
+                        input.setAttribute("readonly", "true");
+                        input.style.cursor = "pointer";
+                    }
                 });
 
-                // 2. 특정 버튼(랜덤 추천, 일반 목록) 처리
+                // 2. 특정 버튼 클릭 시 사이드바 닫기 처리
                 const buttons = parentDoc.querySelectorAll('button');
                 buttons.forEach(btn => {
                     const btnText = btn.innerText;
                     if (btnText.includes("랜덤 추천 받기") || btnText.includes("일반 목록으로")) {
                         btn.removeEventListener("click", btn._sidebarHandler);
                         btn._sidebarHandler = () => {
-                            // 버튼 클릭 후 약간의 시차를 두고 사이드바 닫기 시도
                             setTimeout(closeSidebarIfMobile, 100);
                         };
                         btn.addEventListener("click", btn._sidebarHandler);
@@ -863,16 +874,14 @@ with st.sidebar:
                     if (sidebar && sidebar.offsetParent !== null) {
                         const closeBtn = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]') || 
                                          window.parent.document.querySelector('button[aria-label="Close sidebar"]');
-                        if (closeBtn) {
-                            closeBtn.click();
-                        }
+                        if (closeBtn) closeBtn.click();
                     }
                 }
             }
             
-            // 동적 렌더링 대응을 위해 여러 번 시도
-            setTimeout(handleMobileInteractions, 300);
-            setTimeout(handleMobileInteractions, 1000);
+            // 실행
+            setTimeout(handleMobileInteractions, 500);
+            setTimeout(handleMobileInteractions, 1500);
             setTimeout(handleMobileInteractions, 3000);
         </script>
     """, height=0)

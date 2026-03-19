@@ -16,7 +16,9 @@ from google.auth.transport.requests import Request as GoogleRequest
 st.set_page_config(page_title="K's 애니 아카이브", page_icon="🎬", layout="wide")
 
 # --- 쿠키 매니저 설정 (고유 키 추가) ---
+# --- 쿠키 매니저 설정 및 데이터 로드 (최상단 통합) ---
 cookie_manager = stx.CookieManager(key="anime_cookie_manager")
+all_cookies = cookie_manager.get_all()
 
 # --- UI 레이아웃 및 디자인 고정 CSS ---
 st.markdown("""

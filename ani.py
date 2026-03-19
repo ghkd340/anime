@@ -758,7 +758,7 @@ with st.sidebar:
 @st.cache_data(ttl=3600)
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
     url = 'https://graphql.anilist.co'
-    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear"
+    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site }"
     
     # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
@@ -986,41 +986,54 @@ else:
             else:
                 st.markdown('<div class="empty-comment-box"></div>', unsafe_allow_html=True)
 
-            c1, c2 = st.columns(2, gap="small")
+            c1, c2, c3 = st.columns(3, gap="small")
             c1.link_button("상세", anime['siteUrl'], use_container_width=True)
+            
+            # 예고편 버튼
+            trailer = anime.get('trailer')
+            if trailer and trailer.get('site') == 'youtube':
+                with c2.popover("🎬", use_container_width=True, key=f"trailer_{a_id}"):
+                    st.video(f"https://www.youtube.com/watch?v={trailer['id']}")
+            else:
+                c2.button("🎬", disabled=True, use_container_width=True, help="예고편 정보가 없습니다.")
+
             if st.session_state.logged_in:
-                if is_w:
-                    with c2.popover("수정", use_container_width=True, key=f"popover_edit_{a_id}"):
+                # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함
+                ac = st.session_state.action_cnt
+                pop_label = "수정" if is_w else "봤어요"
+                
+                with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
+                    if is_w:
                         w_data = current_watched.get(a_id, {})
-                        u_score = st.slider("내 평점", 0.0, 5.0, float(w_data.get("rating", 5.0)), 0.1, key=f"score_edit_{a_id}")
-                        u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"count_edit_{a_id}")
-                        u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_edit_{a_id}")
+                        u_score = st.slider("내 평점", 0.0, 5.0, float(w_data.get("rating", 5.0)), 0.1, key=f"score_edit_{a_id}_{ac}")
+                        u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"count_edit_{a_id}_{ac}")
+                        u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_edit_{a_id}_{ac}")
                         
-                        if st.button("업데이트", key=f"btn_update_{a_id}", use_container_width=True, type="primary"):
-                            if st.session_state.watched_list is None:
-                                st.session_state.watched_list = {}
+                        if st.button("업데이트", key=f"btn_update_{a_id}_{ac}", use_container_width=True, type="primary"):
+                            if st.session_state.watched_list is None: st.session_state.watched_list = {}
                             st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
                             update_db(a_id, "add", u_score, u_comment, u_count)
-                            st.rerun() # 새로고침하여 팝오버를 닫음
+                            st.session_state.action_cnt += 1
+                            st.rerun()
                             
                         st.divider()
-                        if st.button("시청 기록 삭제", key=f"btn_delete_{a_id}", use_container_width=True):
+                        if st.button("시청 기록 삭제", key=f"btn_delete_{a_id}_{ac}", use_container_width=True):
                             if st.session_state.watched_list is not None:
                                 st.session_state.watched_list.pop(a_id, None)
                             update_db(a_id, "remove")
-                            st.rerun() # 새로고침하여 팝오버를 닫음
-                else:
-                    with c2.popover("봤어요", use_container_width=True, key=f"popover_new_{a_id}"):
-                        u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, key=f"score_new_{a_id}")
-                        u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_new_{a_id}")
-                        u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}")
+                            st.session_state.action_cnt += 1
+                            st.rerun()
+                    else:
+                        u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, key=f"score_new_{a_id}_{ac}")
+                        u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_new_{a_id}_{ac}")
+                        u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
                         
-                        if st.button("저장", key=f"btn_save_{a_id}", use_container_width=True, type="primary"):
-                            if st.session_state.watched_list is None:
-                                st.session_state.watched_list = {}
+                        if st.button("저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
+                            if st.session_state.watched_list is None: st.session_state.watched_list = {}
                             st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
                             update_db(a_id, "add", u_score, u_comment, u_count)
-                            st.rerun() # 새로고침하여 팝오버를 닫음
+                            st.session_state.action_cnt += 1
+                            st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
             st.write("") 

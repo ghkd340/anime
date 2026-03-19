@@ -246,42 +246,48 @@ if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
 if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
 if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 
-# --- [앱 보호막: 인증 확인 및 세션 복구] ---
-def run_auth_shield():
+# --- [인증 시스템: 배포 환경 최적화] ---
+def sync_session():
+    """URL 파라미터와 세션 상태를 동기화하여 새로고침 시 즉시 복구"""
     # 1. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
-        return True
-        
-    # 2. 쿼리 파라미터에서 사용자 정보 복구 (새로고침 시 가장 확실함)
+        return
+
+    # 2. OAuth 처리 중이면 복구 로직 건너뜀 (콜백 로직에서 처리함)
+    if "code" in st.query_params:
+        return
+
+    # 3. URL 파라미터 확인 (배포 환경에서 가장 신뢰할 수 있는 수단)
     q_email = st.query_params.get("u_email")
     q_name = st.query_params.get("u_name")
+    
     if q_email and q_name:
         st.session_state.user_info = {"email": q_email, "name": q_name}
         st.session_state.logged_in = True
         st.session_state.watched_list = load_watched_from_db()
-        return True
+        return
 
-    # 3. 쿠키 기반 세션 복구 확인 (서브 시스템)
-    cookies = cookie_manager.get_all()
-    if cookies:
-        user_key = f"user_{app_id}"
-        if user_key in cookies:
-            try:
+    # 4. 쿠키 기반 복구 (배포 환경 iframe 대응)
+    try:
+        cookies = cookie_manager.get_all()
+        if cookies:
+            user_key = f"user_{app_id}"
+            if user_key in cookies:
                 raw_data = cookies[user_key]
                 user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
                 if user_info and isinstance(user_info, dict):
                     st.session_state.user_info = user_info
                     st.session_state.logged_in = True
                     st.session_state.watched_list = load_watched_from_db()
-                    # URL에 정보 동기화
+                    # URL에 정보 동기화 (새로고침 시 즉시 복구용)
                     st.query_params["u_email"] = user_info.get("email")
                     st.query_params["u_name"] = user_info.get("name")
                     st.rerun()
-            except: pass
-    return True
+    except:
+        pass
 
-# 보호막 가동
-run_auth_shield()
+# 세션 동기화 가동
+sync_session()
 
 if 'page' not in st.session_state: st.session_state.page = 1
 if 'code_verifier' not in st.session_state: st.session_state.code_verifier = None
@@ -501,12 +507,16 @@ with st.sidebar:
         if st.button("로그아웃"):
             # --- 쿠키 삭제 ---
             cookie_manager.delete(f"user_{app_id}")
-            # 상태 변경 (st.rerun 없이도 UI는 즉시 반영됨)
+            # --- URL 파라미터 삭제 ---
+            if "u_email" in st.query_params: del st.query_params["u_email"]
+            if "u_name" in st.query_params: del st.query_params["u_name"]
+            
+            # 상태 변경
             st.session_state.logged_in = False
             st.session_state.user_info = None
             st.session_state.watched_list = {}
-            # 여기서 멈추지 않고 끝까지 실행하여 쿠키 삭제를 보장합니다.
             st.info("로그아웃 되었습니다.")
+            st.rerun()
 
     st.divider()
     st.header("🔍 검색 및 필터")

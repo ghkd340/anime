@@ -646,20 +646,20 @@ with st.sidebar:
         
         st.markdown(f"""
         <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(76, 175, 80, 0.2); margin: 15px 0;">
-            <div style="font-size: 0.8rem; color: #666; margin-bottom: 5px;">나의 아카이브 현황</div>
+            <div style="font-size: 0.8rem; color: var(--secondary-text-color); margin-bottom: 5px;">나의 아카이브 현황</div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <div>
-                    <div style="font-size: 1.5rem; font-weight: bold; color: #2e7d32;">{watched_count}</div>
-                    <div style="font-size: 0.7rem; color: #888;">시청한 작품</div>
+                    <div style="font-size: 1.5rem; font-weight: bold; color: #4CAF50;">{watched_count}</div>
+                    <div style="font-size: 0.7rem; color: var(--secondary-text-color);">시청한 작품</div>
                 </div>
                 <div style="text-align: right;">
                     <div style="font-size: 1.5rem; font-weight: bold; color: #f39c12;">{avg_score:.1f}</div>
-                    <div style="font-size: 0.7rem; color: #888;">평균 평점</div>
+                    <div style="font-size: 0.7rem; color: var(--secondary-text-color);">평균 평점</div>
                 </div>
             </div>
             <div style="border-top: 1px dashed rgba(76, 175, 80, 0.2); padding-top: 10px;">
-                <div style="font-size: 0.8rem; font-weight: bold; color: #444;">총 시청 시간</div>
-                <div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">⏱️ {total_time_str}</div>
+                <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">총 시청 시간</div>
+                <div style="font-size: 1.1rem; color: #4CAF50; font-weight: bold;">⏱️ {total_time_str}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)

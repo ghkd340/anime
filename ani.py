@@ -362,7 +362,6 @@ if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
 if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
 if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 if 'action_cnt' not in st.session_state: st.session_state.action_cnt = 0
-if 'recent_searches' not in st.session_state: st.session_state.recent_searches = []
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
@@ -818,84 +817,33 @@ with st.sidebar:
     
     # 제목 검색 (즉시 반영)
     search_q = st.query_params.get("q", "")
-    
-    # 최근 검색어 UI 상자 (검색창 아래 배치)
-    if st.session_state.recent_searches:
-        st.markdown("""
-        <style>
-            #recent-searches-container {
-                display: none;
-                background: rgba(128, 128, 128, 0.05);
-                border: 1px solid rgba(128, 128, 128, 0.2);
-                border-radius: 12px;
-                padding: 12px;
-                margin-top: -10px;
-                margin-bottom: 15px;
-            }
-            .rs-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
-            /* 최근 검색어 버튼 스타일 */
-            div[data-testid="column"] button[kind="secondary"] {
-                padding: 0.2rem 0.6rem !important;
-                font-size: 0.8rem !important;
-                height: 28px !important;
-                border-radius: 14px !important;
-            }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        st.markdown('<div id="recent-searches-container">', unsafe_allow_html=True)
-        st.caption("🕒 최근 검색어")
-        rs_list = st.session_state.recent_searches
-        cols_rs = st.columns([1] * len(rs_list) + [0.5])
-        for i, word in enumerate(rs_list):
-            if cols_rs[i].button(word, key=f"rs_btn_{i}", use_container_width=True):
-                st.query_params["q"] = word
-                st.session_state.page = 1
-                st.rerun()
-        if cols_rs[-1].button("🗑️", key="rs_clear"):
-            st.session_state.recent_searches = []
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
     new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목", key="search_input")
 
-    # 모바일 키보드 및 최근 검색어 포커스 제어 JS
+    # 모바일 키보드 제어 JS (검색창은 키보드 활성화, 필터류는 비활성화)
     st.components.v1.html("""
         <script>
             function setupInputs() {
                 const doc = window.parent.document;
                 const inputs = doc.querySelectorAll('input');
-                const rsContainer = doc.getElementById("recent-searches-container");
                 
                 inputs.forEach(input => {
-                    // 1. 제목 검색창 제어
+                    // 1. 제목 검색창: 키보드 '검색' 버튼 설정
                     if (input.placeholder === "영문 또는 일문 제목") {
                         input.type = "search";
                         input.setAttribute("enterkeyhint", "search");
-                        
-                        // 포커스 시 최근 검색어 노출
-                        input.addEventListener("focus", () => {
-                            if (rsContainer) rsContainer.style.display = "block";
-                        });
-                        
-                        // 포커스 해제 시 숨김 (버튼 클릭 시간을 위해 지연)
-                        input.addEventListener("blur", () => {
-                            setTimeout(() => {
-                                if (rsContainer) rsContainer.style.display = "none";
-                            }, 250);
-                        });
-
                         input.addEventListener("keydown", (e) => {
                             if (e.key === "Enter") input.blur();
                         });
                     }
                     
-                    // 2. 필터류 커서 방지 (기존 로직)
+                    // 2. 필터류 (년도, 분기, 장르, 시청여부): 키보드 팝업 및 커서 방지
                     const container = input.closest('div[data-testid="stSelectbox"], div[data-testid="stMultiSelect"]');
                     if (container) {
                         const label = container.querySelector('label');
                         if (label && ["년도", "분기", "포함 장르", "제외 장르", "시청 여부"].some(text => label.textContent.trim() === text)) {
+                            // inputmode="none"은 모바일 키보드를 띄우지 않게 함
                             input.setAttribute('inputmode', 'none');
+                            // readonly는 텍스트 입력을 막고 커서(I-beam)가 생기는 것을 방지함
                             input.setAttribute('readonly', 'true');
                             input.style.cursor = 'pointer';
                         }
@@ -903,6 +851,7 @@ with st.sidebar:
                 });
             }
 
+            // Streamlit의 렌더링 타이밍을 고려하여 지연 실행 및 반복 실행
             setTimeout(setupInputs, 500);
             setTimeout(setupInputs, 1500);
             setTimeout(setupInputs, 2500);
@@ -910,12 +859,6 @@ with st.sidebar:
     """, height=0)
 
     if new_search != search_q:
-        if new_search.strip():
-            rs = st.session_state.recent_searches
-            if new_search in rs: rs.remove(new_search)
-            rs.insert(0, new_search)
-            st.session_state.recent_searches = rs[:5]
-            
         st.query_params["q"] = new_search
         st.session_state.page = 1
         st.rerun()

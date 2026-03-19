@@ -607,7 +607,7 @@ with st.sidebar:
                 st.session_state.code_verifier = flow.code_verifier
                 oauth_storage[state] = flow.code_verifier
             
-            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_blank" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_blank" class="google-login-btn">구글 로그인</a>', unsafe_allow_html=True)
     else:
         st.success(f"**{st.session_state.user_info.get('name')}**님")
         
@@ -817,7 +817,28 @@ with st.sidebar:
     
     # 제목 검색 (즉시 반영)
     search_q = st.query_params.get("q", "")
-    new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목")
+    new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목", key="search_input")
+
+    # 모바일 키보드 '돋보기' 설정을 위한 JS (search 타입 및 enterkeyhint 부여)
+    st.components.v1.html("""
+        <script>
+            setTimeout(() => {
+                const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+                inputs.forEach(input => {
+                    if (input.placeholder === "영문 또는 일문 제목") {
+                        input.type = "search";
+                        input.setAttribute("enterkeyhint", "search");
+                        // 폼 제출 시 키보드 닫기 지원
+                        input.addEventListener("keydown", (e) => {
+                            if (e.key === "Enter") {
+                                input.blur();
+                            }
+                        });
+                    }
+                });
+            }, 500);
+        </script>
+    """, height=0)
 
     if new_search != search_q:
         st.query_params["q"] = new_search

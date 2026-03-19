@@ -276,13 +276,21 @@ def batch_update_db(data_dict):
 # --- 유틸리티 함수 (Module Level) ---
 @st.cache_data(ttl=86400)
 def get_watched_metadata(ids):
+    """AniList ID 목록을 받아 제목, 에피소드, 시간, 장르 정보를 가져옵니다."""
     if not ids: return {}
+    # ID를 모두 정수로 변환 (데이터 타입 불일치 방지)
+    clean_ids = []
+    for x in ids:
+        try: clean_ids.append(int(x))
+        except: continue
+        
     url = 'https://graphql.anilist.co'
     query = '''
     query ($ids: [Int]) {
       Page(page: 1, perPage: 50) {
         media(id_in: $ids, type: ANIME) {
           id
+          title { native romaji }
           episodes
           duration
           genres
@@ -291,18 +299,22 @@ def get_watched_metadata(ids):
     }
     '''
     all_meta = {}
-    for i in range(0, len(ids), 50):
-        chunk = ids[i:i+50]
+    # 50개씩 청크로 나누어 요청
+    for i in range(0, len(clean_ids), 50):
+        chunk = clean_ids[i:i+50]
         try:
-            res = requests.post(url, json={'query': query, 'variables': {'ids': chunk}}, timeout=10)
-            data = res.json().get('data', {}).get('Page', {}).get('media', [])
+            res = requests.post(url, json={'query': query, 'variables': {'ids': chunk}}, timeout=15)
+            res_json = res.json()
+            data = res_json.get('data', {}).get('Page', {}).get('media', [])
             for m in data:
-                all_meta[m['id']] = {
+                all_meta[int(m['id'])] = {
+                    'title': m.get('title', {}),
                     'episodes': m.get('episodes') or 0,
                     'duration': m.get('duration') or 0,
                     'genres': m.get('genres', [])
                 }
-        except: pass
+        except Exception as e:
+            pass
     return all_meta
 
 # 3. 구글 OAuth 설정 함수
@@ -543,39 +555,7 @@ with st.sidebar:
         if watched_count > 0:
             avg_score = sum(v.get('rating', 0) for v in current_watched.values()) / watched_count
             
-            # 총 시청 시간 및 장르 통계 계산 (캐싱된 메타데이터 활용)
-            @st.cache_data(ttl=86400)
-            def get_watched_metadata(ids):
-                if not ids: return {}
-                url = 'https://graphql.anilist.co'
-                query = '''
-                query ($ids: [Int]) {
-                  Page(page: 1, perPage: 50) {
-                    media(id_in: $ids, type: ANIME) {
-                      id
-                      episodes
-                      duration
-                      genres
-                    }
-                  }
-                }
-                '''
-                all_meta = {}
-                # 50개씩 청크로 나누어 요청
-                for i in range(0, len(ids), 50):
-                    chunk = ids[i:i+50]
-                    try:
-                        res = requests.post(url, json={'query': query, 'variables': {'ids': chunk}}, timeout=10)
-                        data = res.json().get('data', {}).get('Page', {}).get('media', [])
-                        for m in data:
-                            all_meta[m['id']] = {
-                                'episodes': m.get('episodes') or 0,
-                                'duration': m.get('duration') or 0,
-                                'genres': m.get('genres', [])
-                            }
-                    except: pass
-                return all_meta
-
+            # 총 시청 시간 및 장르 통계 계산 (상단에 정의된 통합 get_watched_metadata 호출)
             watched_ids = list(current_watched.keys())
             meta_map = get_watched_metadata(watched_ids)
             
@@ -657,22 +637,30 @@ with st.sidebar:
         with st.expander("💾 데이터 내보내기/가져오기"):
             # 1. 내보내기 (Export)
             if watched_count > 0:
-                # JSON 직렬화 가능한 형태로 변환 (datetime 등 제외)
-                export_dict = {}
-                for aid, info in current_watched.items():
-                    export_dict[str(aid)] = {
-                        "rating": info.get("rating", 5.0),
-                        "comment": info.get("comment", ""),
-                        "count": info.get("count", 1)
-                    }
-                json_str = json.dumps(export_dict, ensure_ascii=False, indent=2)
-                st.download_button(
-                    label="📥 JSON으로 내보내기",
-                    data=json_str,
-                    file_name=f"anime_archive_{datetime.now().strftime('%Y%m%d')}.json",
-                    mime="application/json",
-                    use_container_width=True
-                )
+                # JSON 직렬화 가능한 형태로 변환 (제목 포함)
+                if st.button("📦 내보낼 데이터 준비하기", use_container_width=True):
+                    with st.spinner("작품 정보를 불러오는 중..."):
+                        watched_ids = list(current_watched.keys())
+                        meta_map = get_watched_metadata(watched_ids)
+                        
+                        export_dict = {}
+                        for aid, info in current_watched.items():
+                            meta = meta_map.get(aid, {})
+                            export_dict[str(aid)] = {
+                                "title": meta.get("title", {"native": "Unknown", "romaji": "Unknown"}),
+                                "rating": info.get("rating", 5.0),
+                                "comment": info.get("comment", ""),
+                                "count": info.get("count", 1)
+                            }
+                        
+                        json_str = json.dumps(export_dict, ensure_ascii=False, indent=2)
+                        st.download_button(
+                            label="📥 JSON 다운로드",
+                            data=json_str,
+                            file_name=f"anime_archive_{datetime.now().strftime('%Y%m%d')}.json",
+                            mime="application/json",
+                            use_container_width=True
+                        )
             else:
                 st.caption("내보낼 데이터가 없습니다.")
             

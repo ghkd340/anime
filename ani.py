@@ -472,12 +472,14 @@ with st.sidebar:
         
         
         # --- 시청 통계 섹션 ---
-        watched_count = len(st.session_state.watched_list)
+        # watched_list가 None인 경우 빈 딕셔너리로 취급
+        current_watched = st.session_state.watched_list or {}
+        watched_count = len(current_watched)
         avg_score = 0
         total_time_str = "0분"
         
         if watched_count > 0:
-            avg_score = sum(v.get('rating', 0) for v in st.session_state.watched_list.values()) / watched_count
+            avg_score = sum(v.get('rating', 0) for v in current_watched.values()) / watched_count
             
             # 총 시청 시간 및 장르 통계 계산 (캐싱된 메타데이터 활용)
             @st.cache_data(ttl=86400)
@@ -512,7 +514,7 @@ with st.sidebar:
                     except: pass
                 return all_meta
 
-            watched_ids = list(st.session_state.watched_list.keys())
+            watched_ids = list(current_watched.keys())
             meta_map = get_watched_metadata(watched_ids)
             
             total_minutes = 0
@@ -526,7 +528,7 @@ with st.sidebar:
                 "Sci-Fi": "SF", "Slice of Life": "일상", "Sports": "스포츠", "Supernatural": "초자연", "Thriller": "스릴러"
             }
 
-            for aid, info in st.session_state.watched_list.items():
+            for aid, info in current_watched.items():
                 meta = meta_map.get(aid)
                 rating = info.get('rating', 0)
                 if meta:
@@ -783,14 +785,15 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
     exclude_ids = None
     
     # 1. 시청한 작품 필터링 및 정렬용 ID 목록 생성
+    current_watched = st.session_state.watched_list or {}
     if only_w:
-        target_ids = [aid for aid, info in st.session_state.watched_list.items() if info.get('rating', 0) >= s_rating]
+        target_ids = [aid for aid, info in current_watched.items() if info.get('rating', 0) >= s_rating]
         
         # "내 평점순"인 경우 ID 목록 자체를 평점순(1순위) + 시청 횟수순(2순위)으로 미리 정렬
         if st.session_state.sort_by == "내 평점순":
             target_ids.sort(key=lambda aid: (
-                st.session_state.watched_list[aid].get('rating', 0), 
-                st.session_state.watched_list[aid].get('count', 1)
+                current_watched[aid].get('rating', 0), 
+                current_watched[aid].get('count', 1)
             ), reverse=True)
             
         if not target_ids: 
@@ -800,7 +803,7 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
             target_ids = target_ids[:500]
     
     if only_not_w:
-        exclude_ids = list(st.session_state.watched_list.keys())
+        exclude_ids = list(current_watched.keys())
         if exclude_ids:
             exclude_ids = exclude_ids[:500]
 
@@ -824,9 +827,10 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
         
         # "내 평점순"인 경우 가져온 결과 내에서 다시 한 번 정렬 (평점 -> 시청 횟수 순)
         if st.session_state.sort_by == "내 평점순":
+            current_watched = st.session_state.watched_list or {}
             new_items.sort(key=lambda x: (
-                st.session_state.watched_list.get(x['id'], {}).get('rating', 0),
-                st.session_state.watched_list.get(x['id'], {}).get('count', 1)
+                current_watched.get(x['id'], {}).get('rating', 0),
+                current_watched.get(x['id'], {}).get('count', 1)
             ), reverse=True)
             
         existing_ids = {m['id'] for m in st.session_state.all_media}
@@ -863,12 +867,13 @@ else:
     cols = st.columns(4)
     for i, anime in enumerate(anime_list):
         a_id = anime['id']
+        current_watched = st.session_state.watched_list or {}
         with cols[i % 4]:
             st.markdown('<div class="anime-card-container">', unsafe_allow_html=True)
             st.image(anime['coverImage']['extraLarge'], use_container_width=True)
-            is_w = a_id in st.session_state.watched_list
+            is_w = a_id in current_watched
             if is_w:
-                w_data = st.session_state.watched_list.get(a_id, {})
+                w_data = current_watched.get(a_id, {})
                 user_rating = w_data.get("rating", 5.0)
                 user_count = w_data.get("count", 1)
                 count_str = f" ({user_count}회)" if user_count > 1 else ""
@@ -894,7 +899,7 @@ else:
             st.markdown(score_html, unsafe_allow_html=True)
 
             if is_w:
-                w_data = st.session_state.watched_list.get(a_id, {})
+                w_data = current_watched.get(a_id, {})
                 user_comment = w_data.get("comment", "")
                 if user_comment:
                     st.markdown(f'<div class="user-comment-box">"{user_comment}"</div>', unsafe_allow_html=True)
@@ -908,7 +913,8 @@ else:
             if st.session_state.logged_in:
                 if is_w:
                     if c2.button("취소", key=f"un_{a_id}", use_container_width=True):
-                        st.session_state.watched_list.pop(a_id, None)
+                        if st.session_state.watched_list is not None:
+                            st.session_state.watched_list.pop(a_id, None)
                         update_db(a_id, "remove")
                         st.rerun()
                 else:
@@ -917,9 +923,12 @@ else:
                         u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_{a_id}")
                         u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_{a_id}")
                         if st.button("저장", key=f"save_{a_id}", use_container_width=True):
+                            if st.session_state.watched_list is None:
+                                st.session_state.watched_list = {}
                             st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
                             update_db(a_id, "add", u_score, u_comment, u_count)
                             st.rerun()
+
             st.markdown('</div>', unsafe_allow_html=True)
             st.write("") 
 

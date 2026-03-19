@@ -246,38 +246,39 @@ if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
 if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
 if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 
-# --- [앱 보호막: 인증 확인 및 세션 복구] ---
+# --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
     # 1. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
         return True
         
-    # 2. 쿼리 파라미터에서 사용자 정보 복구 (새로고침 시 가장 확실함)
-    q_email = st.query_params.get("u_email")
-    q_name = st.query_params.get("u_name")
-    if q_email and q_name:
-        st.session_state.user_info = {"email": q_email, "name": q_name}
-        st.session_state.logged_in = True
-        st.session_state.watched_list = load_watched_from_db()
-        return True
-
-    # 3. 쿠키 기반 세션 복구 확인 (서브 시스템)
+    # 2. 쿠키 기반 세션 복구 확인
     cookies = cookie_manager.get_all()
-    if cookies:
-        user_key = f"user_{app_id}"
-        if user_key in cookies:
-            try:
-                raw_data = cookies[user_key]
-                user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
-                if user_info and isinstance(user_info, dict):
-                    st.session_state.user_info = user_info
-                    st.session_state.logged_in = True
-                    st.session_state.watched_list = load_watched_from_db()
-                    # URL에 정보 동기화
-                    st.query_params["u_email"] = user_info.get("email")
-                    st.query_params["u_name"] = user_info.get("name")
-                    st.rerun()
-            except: pass
+    if cookies is None:
+        st.stop() # 컴포넌트 로딩 대기 (자동 재실행됨)
+        
+    user_key = f"user_{app_id}"
+    
+    # [디버깅] 감지된 쿠키 목록 표시 (로그인 전까지만)
+    # st.sidebar.caption(f"🍪 감지된 쿠키 키: {list(cookies.keys())}")
+
+    if user_key in cookies and not st.session_state.get('logged_in'):
+        try:
+            raw_data = cookies[user_key]
+            user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+            
+            if user_info and isinstance(user_info, dict):
+                st.session_state.user_info = user_info
+                st.session_state.logged_in = True
+                st.session_state.watched_list = load_watched_from_db()
+                st.rerun() 
+        except Exception as e:
+            st.sidebar.error(f"⚠️ 세션 복구 에러: {e}")
+        
+    # 3. OAuth 콜백 처리 (쿠키가 없을 때만 진행)
+    if "code" in st.query_params and not st.session_state.logged_in:
+        return True
+        
     return True
 
 # 보호막 가동
@@ -297,7 +298,8 @@ def perform_secure_token_exchange(code, state, verifier):
             info = id_token.verify_oauth2_token(
                 flow.credentials.id_token, 
                 GoogleRequest(), 
-                st.secrets["google_oauth"]["client_id"].strip()
+                st.secrets["google_oauth"]["client_id"].strip(),
+                clock_skew_in_seconds=10  # 10초의 시간 오차 허용
             )
             return info
     except Exception as e:
@@ -342,22 +344,9 @@ if "code" in q_params:
             
             if state in oauth_storage: del oauth_storage[state]
             st.session_state.code_verifier = None
-            
-            # 로그인 성공 후 처리: 팝업이면 부모 창 새로고침 후 닫기, 아니면 현재 창 새로고침
+            # st.query_params.clear()를 여기서 호출하지 않습니다.
+            # 스크립트가 끝까지 실행되어야 쿠키 저장 명령이 브라우저에 도달합니다.
             st.success("로그인 성공! 세션이 연결되었습니다.")
-            st.components.v1.html(f"""
-                <script>
-                    if (window.parent.opener && window.parent.opener !== window.parent) {{
-                        // 팝업 창인 경우: 부모 창을 새로고침하고 자신을 닫음
-                        window.parent.opener.location.reload();
-                        window.parent.close();
-                    }} else {{
-                        // 일반 창인 경우: 쿼리 파라미터를 제거하고 새로고침
-                        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
-                    }}
-                </script>
-            """, height=0)
-            st.stop()
         elif isinstance(result, Exception):
             if st.session_state.logged_in:
                 st.query_params.clear()
@@ -386,7 +375,7 @@ with st.sidebar:
                 st.session_state.code_verifier = flow.code_verifier
                 oauth_storage[state] = flow.code_verifier
             
-            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_blank" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_self" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
     else:
         st.success(f"**{st.session_state.user_info.get('name')}**님")
         

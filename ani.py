@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import base64
 from datetime import datetime, timedelta
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -254,15 +255,10 @@ def run_auth_shield():
         
     # 2. 쿠키 기반 세션 복구 확인
     cookies = cookie_manager.get_all()
-    if cookies is None:
-        st.stop() # 컴포넌트 로딩 대기 (자동 재실행됨)
-        
+    
     user_key = f"user_{app_id}"
     
-    # [디버깅] 감지된 쿠키 목록 표시 (로그인 전까지만)
-    # st.sidebar.caption(f"🍪 감지된 쿠키 키: {list(cookies.keys())}")
-
-    if user_key in cookies and not st.session_state.get('logged_in'):
+    if cookies and user_key in cookies and not st.session_state.get('logged_in'):
         try:
             raw_data = cookies[user_key]
             user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
@@ -274,8 +270,22 @@ def run_auth_shield():
                 st.rerun() 
         except Exception as e:
             st.sidebar.error(f"⚠️ 세션 복구 에러: {e}")
+
+    # 3. URL 파라미터 기반 세션 복구 (쿠키 차단 대응)
+    if "session" in st.query_params and not st.session_state.get('logged_in'):
+        try:
+            session_data = st.query_params["session"]
+            decoded_data = base64.b64decode(session_data).decode()
+            user_info = json.loads(decoded_data)
+            
+            if user_info and isinstance(user_info, dict):
+                st.session_state.user_info = user_info
+                st.session_state.logged_in = True
+                st.session_state.watched_list = load_watched_from_db()
+                st.rerun()
+        except: pass
         
-    # 3. OAuth 콜백 처리 (쿠키가 없을 때만 진행)
+    # 4. OAuth 콜백 처리 (쿠키/세션이 없을 때만 진행)
     if "code" in st.query_params and not st.session_state.logged_in:
         return True
         
@@ -340,6 +350,9 @@ if "code" in q_params:
                     json.dumps(cookie_data), 
                     expires_at=datetime.now() + timedelta(days=30)
                 )
+                # URL 파라미터에도 세션 정보 저장 (쿠키 차단 대비)
+                session_str = json.dumps(cookie_data)
+                st.query_params["session"] = base64.b64encode(session_str.encode()).decode()
             except: pass
             
             if state in oauth_storage: del oauth_storage[state]
@@ -501,6 +514,9 @@ with st.sidebar:
         if st.button("로그아웃"):
             # --- 쿠키 삭제 ---
             cookie_manager.delete(f"user_{app_id}")
+            # --- URL 파라미터 삭제 ---
+            if "session" in st.query_params:
+                del st.query_params["session"]
             # 상태 변경 (st.rerun 없이도 UI는 즉시 반영됨)
             st.session_state.logged_in = False
             st.session_state.user_info = None

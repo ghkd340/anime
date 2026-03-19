@@ -337,8 +337,14 @@ if "code" in q_params:
     if verifier:
         result = perform_secure_token_exchange(code, state, verifier)
         if isinstance(result, dict):
-            # 로그인 성공 시 사용한 쿠키 제거
-            cookie_manager.delete(f"cv_{app_id}")
+            # 로그인 성공 시 사용한 쿠키 제거 (KeyError 방지)
+            try:
+                cv_key = f"cv_{app_id}"
+                # .get_all()을 통해 현재 쿠키가 존재하는지 확인 후 삭제
+                current_cookies = cookie_manager.get_all()
+                if current_cookies and cv_key in current_cookies:
+                    cookie_manager.delete(cv_key)
+            except: pass
             
             st.session_state.logged_in = True
             st.session_state.user_info = result

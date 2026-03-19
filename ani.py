@@ -343,9 +343,22 @@ if "code" in q_params:
             
             if state in oauth_storage: del oauth_storage[state]
             st.session_state.code_verifier = None
-            # st.query_params.clear()를 여기서 호출하지 않습니다.
-            # 스크립트가 끝까지 실행되어야 쿠키 저장 명령이 브라우저에 도달합니다.
+            
+            # 로그인 성공 후 처리: 팝업이면 부모 창 새로고침 후 닫기, 아니면 현재 창 새로고침
             st.success("로그인 성공! 세션이 연결되었습니다.")
+            st.components.v1.html(f"""
+                <script>
+                    if (window.parent.opener && window.parent.opener !== window.parent) {{
+                        // 팝업 창인 경우: 부모 창을 새로고침하고 자신을 닫음
+                        window.parent.opener.location.reload();
+                        window.parent.close();
+                    }} else {{
+                        // 일반 창인 경우: 쿼리 파라미터를 제거하고 새로고침
+                        window.parent.location.href = window.parent.location.origin + window.parent.location.pathname;
+                    }}
+                </script>
+            """, height=0)
+            st.stop()
         elif isinstance(result, Exception):
             if st.session_state.logged_in:
                 st.query_params.clear()
@@ -374,7 +387,7 @@ with st.sidebar:
                 st.session_state.code_verifier = flow.code_verifier
                 oauth_storage[state] = flow.code_verifier
             
-            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_self" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_blank" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
     else:
         st.success(f"**{st.session_state.user_info.get('name')}**님")
         

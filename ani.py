@@ -819,7 +819,7 @@ with st.sidebar:
     search_q = st.query_params.get("q", "")
     new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목", key="search_input")
 
-    # 모바일 키보드 '돋보기' 설정을 위한 JS (search 타입 및 enterkeyhint 부여)
+    # 모바일 키보드 '돋보기' 설정 및 검색 시 사이드바 자동 닫기 JS
     st.components.v1.html("""
         <script>
             setTimeout(() => {
@@ -828,10 +828,18 @@ with st.sidebar:
                     if (input.placeholder === "영문 또는 일문 제목") {
                         input.type = "search";
                         input.setAttribute("enterkeyhint", "search");
-                        // 폼 제출 시 키보드 닫기 지원
+                        
                         input.addEventListener("keydown", (e) => {
                             if (e.key === "Enter") {
+                                // 1. 키보드 내리기
                                 input.blur();
+                                
+                                // 2. 사이드바 닫기 (모바일 대응)
+                                // Streamlit의 사이드바 닫기 버튼은 data-testid="stSidebarCollapseButton"을 가짐
+                                const sidebarCloseBtn = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]');
+                                if (sidebarCloseBtn) {
+                                    sidebarCloseBtn.click();
+                                }
                             }
                         });
                     }

@@ -819,47 +819,61 @@ with st.sidebar:
     search_q = st.query_params.get("q", "")
     new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목", key="search_input")
 
-    # 모바일 키보드 '돋보기' 설정 및 검색 시 사이드바 자동 닫기 JS (강화 버전)
+    # 모바일 키보드 '돋보기' 설정 및 검색/버튼 클릭 시 사이드바 자동 닫기 JS
     st.components.v1.html("""
         <script>
-            function handleMobileSearch() {
-                const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+            function handleMobileInteractions() {
+                const parentDoc = window.parent.document;
+                
+                // 1. 제목 검색 입력창 처리
+                const inputs = parentDoc.querySelectorAll('input[type="text"]');
                 inputs.forEach(input => {
                     if (input.placeholder === "영문 또는 일문 제목") {
                         input.type = "search";
                         input.setAttribute("enterkeyhint", "search");
-                        
-                        // 기존 리스너 제거 (중복 방지)
                         input.removeEventListener("keydown", input._searchHandler);
-                        
                         input._searchHandler = (e) => {
                             if (e.key === "Enter") {
-                                // 1. 키보드 즉시 내리기
                                 input.blur();
-                                
-                                // 2. 모바일 환경(너비 < 768px)에서만 사이드바 닫기
-                                if (window.parent.innerWidth < 768) {
-                                    // 사이드바 상태 확인 (열려 있는 경우에만 닫기 버튼 클릭)
-                                    const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
-                                    if (sidebar && sidebar.offsetParent !== null) {
-                                        // 닫기 버튼 찾기 (아이콘 형태나 레이블로 확인)
-                                        const closeBtn = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]') || 
-                                                         window.parent.document.querySelector('button[aria-label="Close sidebar"]');
-                                        if (closeBtn) {
-                                            closeBtn.click();
-                                        }
-                                    }
-                                }
+                                closeSidebarIfMobile();
                             }
                         };
                         input.addEventListener("keydown", input._searchHandler);
                     }
                 });
+
+                // 2. 특정 버튼(랜덤 추천, 일반 목록) 처리
+                const buttons = parentDoc.querySelectorAll('button');
+                buttons.forEach(btn => {
+                    const btnText = btn.innerText;
+                    if (btnText.includes("랜덤 추천 받기") || btnText.includes("일반 목록으로")) {
+                        btn.removeEventListener("click", btn._sidebarHandler);
+                        btn._sidebarHandler = () => {
+                            // 버튼 클릭 후 약간의 시차를 두고 사이드바 닫기 시도
+                            setTimeout(closeSidebarIfMobile, 100);
+                        };
+                        btn.addEventListener("click", btn._sidebarHandler);
+                    }
+                });
+            }
+
+            function closeSidebarIfMobile() {
+                if (window.parent.innerWidth < 768) {
+                    const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+                    if (sidebar && sidebar.offsetParent !== null) {
+                        const closeBtn = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]') || 
+                                         window.parent.document.querySelector('button[aria-label="Close sidebar"]');
+                        if (closeBtn) {
+                            closeBtn.click();
+                        }
+                    }
+                }
             }
             
-            // DOM 로드 대기 후 실행
-            setTimeout(handleMobileSearch, 300);
-            setTimeout(handleMobileSearch, 1000); // 동적 로딩 대응
+            // 동적 렌더링 대응을 위해 여러 번 시도
+            setTimeout(handleMobileInteractions, 300);
+            setTimeout(handleMobileInteractions, 1000);
+            setTimeout(handleMobileInteractions, 3000);
         </script>
     """, height=0)
 

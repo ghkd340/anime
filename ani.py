@@ -246,64 +246,43 @@ if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
 if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
 if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 
-# --- [인증 시스템: 배포 환경 최적화] ---
-def sync_session():
-    """URL 파라미터와 세션 상태를 동기화하여 새로고침 시 즉시 복구"""
+# --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
+def run_auth_shield():
     # 1. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
-        return
-
-    # 2. OAuth 처리 중이면 복구 로직 건너뜀 (콜백 로직에서 처리함)
-    if "code" in st.query_params:
-        return
-
-    # 3. URL 파라미터 확인 (배포 환경에서 가장 신뢰할 수 있는 수단)
-    q_email = st.query_params.get("u_email")
-    q_name = st.query_params.get("u_name")
+        return True
+        
+    # 2. 쿠키 기반 세션 복구 확인
+    cookies = cookie_manager.get_all()
+    if cookies is None:
+        st.stop() # 컴포넌트 로딩 대기 (자동 재실행됨)
+        
+    user_key = f"user_{app_id}"
     
-    if q_email and q_name:
-        st.session_state.user_info = {"email": q_email, "name": q_name}
-        st.session_state.logged_in = True
-        st.session_state.watched_list = load_watched_from_db()
-        return
+    # [디버깅] 감지된 쿠키 목록 표시 (로그인 전까지만)
+    # st.sidebar.caption(f"🍪 감지된 쿠키 키: {list(cookies.keys())}")
 
-    # 4. 쿠키 기반 복구 (배포 환경 iframe 대응)
-    try:
-        cookies = cookie_manager.get_all()
-        if cookies:
-            user_key = f"user_{app_id}"
-            if user_key in cookies:
-                raw_data = cookies[user_key]
-                
-                # URL 인코딩 및 따옴표 처리 대응 (배포 환경 보정)
-                if isinstance(raw_data, str):
-                    import urllib.parse
-                    try:
-                        # 1. URL 디코딩 시도
-                        unquoted = urllib.parse.unquote(raw_data)
-                        user_info = json.loads(unquoted)
-                    except:
-                        try:
-                            # 2. 원본 JSON 시도
-                            user_info = json.loads(raw_data)
-                        except:
-                            user_info = None
-                else:
-                    user_info = raw_data
+    if user_key in cookies and not st.session_state.get('logged_in'):
+        try:
+            raw_data = cookies[user_key]
+            user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+            
+            if user_info and isinstance(user_info, dict):
+                st.session_state.user_info = user_info
+                st.session_state.logged_in = True
+                st.session_state.watched_list = load_watched_from_db()
+                st.rerun() 
+        except Exception as e:
+            st.sidebar.error(f"⚠️ 세션 복구 에러: {e}")
+        
+    # 3. OAuth 콜백 처리 (쿠키가 없을 때만 진행)
+    if "code" in st.query_params and not st.session_state.logged_in:
+        return True
+        
+    return True
 
-                if user_info and isinstance(user_info, dict):
-                    st.session_state.user_info = user_info
-                    st.session_state.logged_in = True
-                    st.session_state.watched_list = load_watched_from_db()
-                    # URL에 정보 동기화 (새로고침 시 즉시 복구용)
-                    st.query_params["u_email"] = user_info.get("email")
-                    st.query_params["u_name"] = user_info.get("name")
-                    st.rerun()
-    except:
-        pass
-
-# 세션 동기화 가동
-sync_session()
+# 보호막 가동
+run_auth_shield()
 
 if 'page' not in st.session_state: st.session_state.page = 1
 if 'code_verifier' not in st.session_state: st.session_state.code_verifier = None
@@ -338,43 +317,24 @@ if "code" in q_params:
     code = q_params.get("code")
     state = q_params.get("state")
     
-    # 3중 복구 로직: 세션 -> 서버 메모리 -> 쿠키 순으로 verifier 확인
     verifier = st.session_state.get('code_verifier')
     if not verifier and state:
         verifier = oauth_storage.get(state)
     
-    if not verifier:
-        # 쿠키에서 복구 시도
-        cookies = cookie_manager.get_all()
-        cv_key = f"cv_{app_id}"
-        if cookies and cv_key in cookies:
-            verifier = cookies[cv_key]
-    
     if verifier:
         result = perform_secure_token_exchange(code, state, verifier)
         if isinstance(result, dict):
-            # 로그인 성공 시 사용한 쿠키 제거 (KeyError 방지)
-            try:
-                cv_key = f"cv_{app_id}"
-                # .get_all()을 통해 현재 쿠키가 존재하는지 확인 후 삭제
-                current_cookies = cookie_manager.get_all()
-                if current_cookies and cv_key in current_cookies:
-                    cookie_manager.delete(cv_key)
-            except: pass
-            
             st.session_state.logged_in = True
             st.session_state.user_info = result
             st.session_state.watched_list = load_watched_from_db()
             
-            # 쿠키 저장 (SameSite=None, Secure=True 설정으로 배포 환경 대응)
+            # 쿠키 저장 (최소한의 정보만 저장하여 안정성 확보)
             try:
                 cookie_data = {
                     "name": result.get("name"),
                     "email": result.get("email"),
                     "picture": result.get("picture")
                 }
-                # extra_streamlit_components의 CookieManager는 기본적으로 보안 옵션을 따르지만
-                # 가능한 경우 명시적으로 시도하거나, 더 단순한 정보만 저장
                 cookie_manager.set(
                     f"user_{app_id}", 
                     json.dumps(cookie_data), 
@@ -384,52 +344,9 @@ if "code" in q_params:
             
             if state in oauth_storage: del oauth_storage[state]
             st.session_state.code_verifier = None
-            
-            u_email = result.get("email", "")
-            u_name = result.get("name", "")
-            
-            # 쿠키 데이터 준비 (JS에서도 사용 가능하게)
-            cookie_data = json.dumps({
-                "name": result.get("name"),
-                "email": u_email,
-                "picture": result.get("picture")
-            })
-
-            # 파이썬 레벨에서도 시도
-            try:
-                cookie_manager.set(f"user_{app_id}", cookie_data, expires_at=datetime.now() + timedelta(days=30))
-            except: pass
-
+            # st.query_params.clear()를 여기서 호출하지 않습니다.
+            # 스크립트가 끝까지 실행되어야 쿠키 저장 명령이 브라우저에 도달합니다.
             st.success("로그인 성공! 세션이 연결되었습니다.")
-            
-            # 자바스크립트 통합 처리: 부모 창에서 쿠키 저장 + 부모 창 리다이렉트
-            new_params = f"?u_email={u_email}&u_name={u_name}"
-            st.components.v1.html(f"""
-                <script>
-                    var topWindow = window.top;
-                    var openerWindow = topWindow.opener;
-                    var targetUrl = topWindow.location.origin + topWindow.location.pathname + "{new_params}";
-                    
-                    function setCookieOnWindow(win) {{
-                        var expiry = new Date();
-                        expiry.setTime(expiry.getTime() + (30*24*60*60*1000));
-                        var cookieStr = "user_{app_id}=" + encodeURIComponent('{cookie_data}') + "; expires=" + expiry.toUTCString() + "; path=/; SameSite=Lax; Secure";
-                        try {{ win.document.cookie = cookieStr; }} catch(e) {{ console.error("Cookie error:", e); }}
-                    }}
-
-                    if (openerWindow && openerWindow !== topWindow) {{
-                        // 1. 새 탭인 경우: 부모 창 도메인에서 쿠키를 굽고 리다이렉트
-                        setCookieOnWindow(openerWindow);
-                        openerWindow.location.href = targetUrl;
-                        setTimeout(function() {{ topWindow.close(); }}, 300);
-                    }} else {{
-                        // 2. 현재 창인 경우: 현재 창에서 쿠키 굽고 이동
-                        setCookieOnWindow(topWindow);
-                        topWindow.location.href = targetUrl;
-                    }}
-                </script>
-            """, height=0)
-            st.stop()
         elif isinstance(result, Exception):
             if st.session_state.logged_in:
                 st.query_params.clear()
@@ -457,14 +374,8 @@ with st.sidebar:
                 st.session_state.google_auth_url = auth_url
                 st.session_state.code_verifier = flow.code_verifier
                 oauth_storage[state] = flow.code_verifier
-                
-                # 쿠키에 verifier 백업 (세션 만료 대비)
-                try:
-                    cookie_manager.set(f"cv_{app_id}", flow.code_verifier, expires_at=datetime.now() + timedelta(minutes=10))
-                except: pass
             
-            # 새 탭(또는 새 창)으로 열기 (기본 브라우저 기능 이용)
-            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_blank" rel="opener" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_self" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
     else:
         st.success(f"**{st.session_state.user_info.get('name')}**님")
         
@@ -590,16 +501,12 @@ with st.sidebar:
         if st.button("로그아웃"):
             # --- 쿠키 삭제 ---
             cookie_manager.delete(f"user_{app_id}")
-            # --- URL 파라미터 삭제 ---
-            if "u_email" in st.query_params: del st.query_params["u_email"]
-            if "u_name" in st.query_params: del st.query_params["u_name"]
-            
-            # 상태 변경
+            # 상태 변경 (st.rerun 없이도 UI는 즉시 반영됨)
             st.session_state.logged_in = False
             st.session_state.user_info = None
             st.session_state.watched_list = {}
+            # 여기서 멈추지 않고 끝까지 실행하여 쿠키 삭제를 보장합니다.
             st.info("로그아웃 되었습니다.")
-            st.rerun()
 
     st.divider()
     st.header("🔍 검색 및 필터")

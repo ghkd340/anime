@@ -253,27 +253,46 @@ def run_auth_shield():
         return True
         
     # 2. 쿠키 기반 세션 복구 확인
-    cookies = cookie_manager.get_all()
-    if cookies is None:
-        st.stop() # 컴포넌트 로딩 대기 (자동 재실행됨)
-        
     user_key = f"user_{app_id}"
+    cookies = cookie_manager.get_all()
     
-    # [디버깅] 감지된 쿠키 목록 표시 (로그인 전까지만)
-    # st.sidebar.caption(f"🍪 감지된 쿠키 키: {list(cookies.keys())}")
+    # [진단] 사이드바 하단에 쿠키 상태 표시
+    with st.sidebar:
+        st.divider()
+        with st.expander("🛠️ 쿠키 진단 도구", expanded=False):
+            if cookies is None:
+                st.caption("⏳ 쿠키 매니저 로딩 중...")
+            elif not cookies:
+                st.caption("🍪 감지된 쿠키 없음 (첫 방문이거나 차단됨)")
+            else:
+                st.caption(f"✅ 감지된 키: {list(cookies.keys())}")
+                if user_key in cookies:
+                    st.caption("🎯 대상 쿠키(user_key) 발견됨")
+                else:
+                    st.caption("⚠️ 대상 쿠키가 목록에 없음")
 
+    if cookies is None:
+        st.stop() 
+        
     if user_key in cookies and not st.session_state.get('logged_in'):
         try:
             raw_data = cookies[user_key]
+            # URL 인코딩된 경우 처리
+            import urllib.parse
+            if isinstance(raw_data, str) and "%22" in raw_data:
+                raw_data = urllib.parse.unquote(raw_data)
+                
             user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
             
             if user_info and isinstance(user_info, dict):
                 st.session_state.user_info = user_info
                 st.session_state.logged_in = True
                 st.session_state.watched_list = load_watched_from_db()
+                st.sidebar.success("✅ 쿠키로 자동 로그인 성공!")
                 st.rerun() 
         except Exception as e:
             st.sidebar.error(f"⚠️ 세션 복구 에러: {e}")
+            st.sidebar.info(f"데이터 내용: {str(raw_data)[:50]}...")
         
     # 3. OAuth 콜백 처리 (쿠키가 없을 때만 진행)
     if "code" in st.query_params and not st.session_state.logged_in:

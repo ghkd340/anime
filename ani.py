@@ -380,158 +380,6 @@ def run_auth_shield():
 # 보호막 가동
 run_auth_shield()
 
-# --- [진단 도구: 사이드바 항상 노출] ---
-with st.sidebar:
-    st.divider()
-    with st.expander("🛠️ 쿠키 상세 진단", expanded=False):
-        user_key = f"user_{app_id}"
-        
-        if all_cookies is None:
-            st.caption("⏳ 쿠키 매니저 로딩 중...")
-        elif not all_cookies:
-            st.warning("🍪 감지된 쿠키 없음")
-            st.info("브라우저 설정에서 '타사 쿠키 차단'이 켜져 있는지 확인해 주세요.")
-        else:
-            st.write(f"📊 감지된 키 개수: {len(all_cookies)}개")
-            st.code(list(all_cookies.keys()))
-            
-            if user_key in all_cookies:
-                st.success("🎯 앱 쿠키가 브라우저에 존재함")
-            else:
-                st.error("❌ 앱 쿠키가 목록에 없음")
-        
-        st.divider()
-        st.write("📂 **데이터 상태**")
-        if st.session_state.logged_in:
-            user_email = st.session_state.user_info.get('email')
-            st.write(f"📧 계정: {user_email}")
-            watched_data = st.session_state.watched_list or {}
-            st.write(f"✅ 시청 목록: {len(watched_data)}개")
-            if st.button("🔄 데이터 수동 동기화"):
-                with st.spinner("서버에서 데이터를 가져오는 중..."):
-                    load_watched_from_db.clear() # 캐시 강제 삭제
-                    st.session_state.watched_list = load_watched_from_db(user_email)
-                    if st.session_state.watched_list:
-                        st.success(f"{len(st.session_state.watched_list)}개의 데이터를 찾았습니다!")
-                        st.rerun()
-                    else:
-                        st.warning("찾은 데이터가 없거나 불러오지 못했습니다.")
-        else:
-            st.info("로그인 후 데이터 상태를 확인할 수 있습니다.")
-                
-        if st.button("🧪 즉석 쿠키 테스트"):
-            test_key = "test_cookie_123"
-            cookie_manager.set(test_key, "working", expires_at=datetime.now() + timedelta(days=1))
-            st.components.v1.html(f"""
-                <script>
-                    document.cookie = "{test_key}_js=working; path=/; SameSite=None; Secure";
-                    alert("테스트 쿠키 쓰기 명령 완료! 새로고침 후 목록에 나타나는지 확인하세요.");
-                </script>
-            """, height=0)
-
-if 'page' not in st.session_state: st.session_state.page = 1
-if 'code_verifier' not in st.session_state: st.session_state.code_verifier = None
-
-# --- [안전한 인증 처리 함수] ---
-@st.cache_resource
-def perform_secure_token_exchange(code, state, verifier):
-    """인증 코드를 한 번만 사용하도록 보장하는 캐시된 함수"""
-    try:
-        flow = get_google_auth_flow()
-        if flow:
-            flow.fetch_token(code=code, code_verifier=verifier)
-            info = id_token.verify_oauth2_token(
-                flow.credentials.id_token, 
-                GoogleRequest(), 
-                st.secrets["google_oauth"]["client_id"].strip(),
-                clock_skew_in_seconds=10  # 10초의 시간 오차 허용
-            )
-            return info
-    except Exception as e:
-        return e
-    return None
-
-# --- [로그인 처리] 최상단 로직 ---
-q_params = st.query_params
-
-if "code" in q_params:
-    if st.session_state.logged_in:
-        st.query_params.clear()
-        st.rerun()
-    
-    code = q_params.get("code")
-    state = q_params.get("state")
-    
-    verifier = st.session_state.get('code_verifier')
-    if not verifier and state:
-        verifier = oauth_storage.get(state)
-    
-    if verifier:
-        result = perform_secure_token_exchange(code, state, verifier)
-        if isinstance(result, dict):
-            st.session_state.logged_in = True
-            st.session_state.user_info = result
-            st.session_state.watched_list = load_watched_from_db(result.get("email"))
-            
-            # 쿠키 저장 (이름 단순화 및 Base64 인코딩으로 성공률 극대화)
-            try:
-                import base64
-                cookie_name = "anime_user_session" # 하이픈 제거한 단순한 이름
-                cookie_data = {
-                    "name": result.get("name"),
-                    "email": result.get("email"),
-                    "picture": result.get("picture")
-                }
-                # 데이터를 Base64로 인코딩 (특수문자 문제 완전 해결)
-                json_str = json.dumps(cookie_data)
-                b64_val = base64.b64encode(json_str.encode()).decode()
-                
-                # 1. 라이브러리 저장
-                cookie_manager.set(
-                    cookie_name, 
-                    b64_val, 
-                    expires_at=datetime.now() + timedelta(days=30)
-                )
-                
-                # 2. JS 직접 주입 (SameSite/Secure 정책 강제 적용)
-                expires = (datetime.now() + timedelta(days=30)).strftime("%a, %d %b %Y %H:%M:%S GMT")
-                st.components.v1.html(f"""
-                    <script>
-                        document.cookie = "{cookie_name}=" + "{b64_val}" + "; path=/; expires={expires}; SameSite=None; Secure";
-                        console.log("App cookie saved with Base64 encoding");
-                    </script>
-                """, height=0)
-                
-            except Exception as e:
-                st.error(f"쿠키 저장 중 오류: {e}")
-            
-            if state in oauth_storage: del oauth_storage[state]
-            st.session_state.code_verifier = None
-            
-            # [해결 시도 3] 컴포넌트 렌더링 타이밍 보장
-            # 즉시 리런하지 않고 사용자가 성공 메시지를 확인하게 하여 쿠키가 브라우저에 기록될 시간을 벌어줍니다.
-            st.success("✅ 로그인 성공! 이제 이 창을 닫고 원래 창에서 새로고침 해주세요.")
-            st.balloons()
-            
-            # 디버깅 정보 (선택사항)
-            # st.info("쿠키가 설정되었습니다. 30일 동안 로그인이 유지됩니다.")
-        elif isinstance(result, Exception):
-            if st.session_state.logged_in:
-                st.query_params.clear()
-                st.rerun()
-            else:
-                st.error("로그인 처리 중 에러가 발생했습니다.")
-                st.exception(result)
-                st.query_params.clear()
-    else:
-        st.error("인증 정보를 찾을 수 없습니다. (세션 만료) 다시 로그인 버튼을 눌러주세요.")
-        st.query_params.clear()
-
-# 로그인 직후 또는 새로고침 시 데이터 로드 보정 (is None 체크로 무한 호출 방지)
-if st.session_state.logged_in and st.session_state.watched_list is None:
-    st.session_state.watched_list = load_watched_from_db(st.session_state.user_info.get("email"))
-
-
 # 5. 사이드바 UI
 with st.sidebar:
     st.header("👤 계정")
@@ -669,31 +517,48 @@ with st.sidebar:
             else:
                 st.caption("데이터가 없습니다.")
 
-        if st.button("로그아웃"):
-            # 1. URL 파라미터에 logout=true 설정 (새로고침 대비)
-            st.query_params["logout"] = "true"
-            
-            # 2. 쿠키 삭제 (새로운 이름 적용 및 안전한 삭제)
-            cookie_name = "anime_user_session"
-            try:
-                cookie_manager.delete(cookie_name)
-            except: pass
-            
-            st.components.v1.html(f"""
-                <script>
-                    document.cookie = "{cookie_name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure";
-                    document.cookie = "user_{app_id}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure";
-                </script>
-            """, height=0)
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            if st.button("🔄 동기화", use_container_width=True, help="서버에서 시청 기록을 다시 불러옵니다."):
+                with st.spinner("불러오는 중..."):
+                    try:
+                        load_watched_from_db.clear()
+                        user_email = st.session_state.user_info.get("email")
+                        synced_data = load_watched_from_db(user_email)
+                        if synced_data:
+                            st.session_state.watched_list = synced_data
+                            st.toast(f"✅ {len(synced_data)}개의 데이터 동기화 완료!")
+                            st.rerun()
+                        else:
+                            st.warning("불러올 데이터가 없거나 실패했습니다.")
+                    except Exception as e:
+                        st.error(f"동기화 오류: {str(e)}")
+        with sc2:
+            if st.button("로그아웃", use_container_width=True):
+                # 1. URL 파라미터에 logout=true 설정 (새로고침 대비)
+                st.query_params["logout"] = "true"
+                
+                # 2. 쿠키 삭제 (새로운 이름 적용 및 안전한 삭제)
+                cookie_name = "anime_user_session"
+                try:
+                    cookie_manager.delete(cookie_name)
+                except: pass
+                
+                st.components.v1.html(f"""
+                    <script>
+                        document.cookie = "{cookie_name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure";
+                        document.cookie = "user_{app_id}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure";
+                    </script>
+                """, height=0)
 
-            # 3. 세션 상태 초기화
-            st.session_state.logged_in = False
-            st.session_state.user_info = None
-            st.session_state.watched_list = {}
-            st.session_state.logout_clicked = True
-            
-            st.success("로그아웃 되었습니다.")
-            st.rerun()
+                # 3. 세션 상태 초기화
+                st.session_state.logged_in = False
+                st.session_state.user_info = None
+                st.session_state.watched_list = {}
+                st.session_state.logout_clicked = True
+                
+                st.success("로그아웃 되었습니다.")
+                st.rerun()
 
     st.divider()
     st.header("🔍 검색 및 필터")
@@ -995,7 +860,7 @@ else:
                 with c2.popover("🎬", use_container_width=True, key=f"trailer_{a_id}"):
                     st.video(f"https://www.youtube.com/watch?v={trailer['id']}")
             else:
-                c2.button("🎬", disabled=True, use_container_width=True, help="예고편 정보가 없습니다.")
+                c2.button("🎬", disabled=True, use_container_width=True, help="예고편 정보가 없습니다.", key=f"no_trailer_{a_id}")
 
             if st.session_state.logged_in:
                 # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함

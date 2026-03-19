@@ -246,39 +246,38 @@ if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
 if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
 if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 
-# --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
+# --- [앱 보호막: 인증 확인 및 세션 복구] ---
 def run_auth_shield():
     # 1. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
         return True
         
-    # 2. 쿠키 기반 세션 복구 확인
-    cookies = cookie_manager.get_all()
-    if cookies is None:
-        st.stop() # 컴포넌트 로딩 대기 (자동 재실행됨)
-        
-    user_key = f"user_{app_id}"
-    
-    # [디버깅] 감지된 쿠키 목록 표시 (로그인 전까지만)
-    # st.sidebar.caption(f"🍪 감지된 쿠키 키: {list(cookies.keys())}")
-
-    if user_key in cookies and not st.session_state.get('logged_in'):
-        try:
-            raw_data = cookies[user_key]
-            user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
-            
-            if user_info and isinstance(user_info, dict):
-                st.session_state.user_info = user_info
-                st.session_state.logged_in = True
-                st.session_state.watched_list = load_watched_from_db()
-                st.rerun() 
-        except Exception as e:
-            st.sidebar.error(f"⚠️ 세션 복구 에러: {e}")
-        
-    # 3. OAuth 콜백 처리 (쿠키가 없을 때만 진행)
-    if "code" in st.query_params and not st.session_state.logged_in:
+    # 2. 쿼리 파라미터에서 사용자 정보 복구 (새로고침 시 가장 확실함)
+    q_email = st.query_params.get("u_email")
+    q_name = st.query_params.get("u_name")
+    if q_email and q_name:
+        st.session_state.user_info = {"email": q_email, "name": q_name}
+        st.session_state.logged_in = True
+        st.session_state.watched_list = load_watched_from_db()
         return True
-        
+
+    # 3. 쿠키 기반 세션 복구 확인 (서브 시스템)
+    cookies = cookie_manager.get_all()
+    if cookies:
+        user_key = f"user_{app_id}"
+        if user_key in cookies:
+            try:
+                raw_data = cookies[user_key]
+                user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                if user_info and isinstance(user_info, dict):
+                    st.session_state.user_info = user_info
+                    st.session_state.logged_in = True
+                    st.session_state.watched_list = load_watched_from_db()
+                    # URL에 정보 동기화
+                    st.query_params["u_email"] = user_info.get("email")
+                    st.query_params["u_name"] = user_info.get("name")
+                    st.rerun()
+            except: pass
     return True
 
 # 보호막 가동

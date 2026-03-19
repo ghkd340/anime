@@ -512,7 +512,7 @@ with st.sidebar:
     
     # 제목 검색 (즉시 반영)
     search_q = st.query_params.get("q", "")
-    new_search = st.text_input("제목 검색", value=search_q, placeholder="한국어, 영문 또는 일문 제목")
+    new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목")
 
     if new_search != search_q:
         st.query_params["q"] = new_search
@@ -546,7 +546,16 @@ with st.sidebar:
     s_ex_genres = [genre_map[g] for g in excluded_genres] if excluded_genres else None
     
     only_w = st.checkbox("내가 본 작품만") if st.session_state.logged_in else False
-    s_adult = st.checkbox("성인물 포함")
+    only_not_w = st.checkbox("내가 안 본 작품만") if st.session_state.logged_in else False
+    
+    # 성인물 설정 (쿼리 파라미터 연동으로 새로고침 유지)
+    adult_param = st.query_params.get("adult", "false") == "true"
+    s_adult = st.checkbox("성인물 포함", value=adult_param)
+
+    if s_adult != adult_param:
+        st.query_params["adult"] = "true" if s_adult else "false"
+        st.session_state.page = 1
+        st.rerun()
     
     # 내 평점 필터 추가 (봤을 때만 유효)
     s_rating = 0.0
@@ -559,7 +568,7 @@ with st.sidebar:
 
 # 6. API 호출 (캐싱)
 @st.cache_data(ttl=3600)
-def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, include_adult=False):
+def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
     url = 'https://graphql.anilist.co'
     media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear"
     
@@ -574,13 +583,14 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
     if ex_genres: base_vars['eg'] = ex_genres
     if search: base_vars['q'] = search
     if ids is not None: base_vars['ids'] = ids
+    if exclude_ids is not None: base_vars['ex_ids'] = exclude_ids
 
     def build_query(is_adult_filter):
         return f'''
-        query ($y: Int, $s: MediaSeason, $p: Int, $sort: [MediaSort], $g: [String], $eg: [String], $q: String, $ids: [Int]) {{
+        query ($y: Int, $s: MediaSeason, $p: Int, $sort: [MediaSort], $g: [String], $eg: [String], $q: String, $ids: [Int], $ex_ids: [Int]) {{
           Page(page: $p, perPage: 24) {{
             pageInfo {{ lastPage hasNextPage }}
-            media(id_in: $ids, search: $q, season: $s, seasonYear: $y, type: ANIME, sort: $sort, genre_in: $g, genre_not_in: $eg, isAdult: {is_adult_filter}) {{
+            media(id_in: $ids, id_not_in: $ex_ids, search: $q, season: $s, seasonYear: $y, type: ANIME, sort: $sort, genre_in: $g, genre_not_in: $eg, isAdult: {is_adult_filter}) {{
               {media_fields}
             }}
           }}
@@ -642,12 +652,14 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
 
 # 정렬 옵션 설정
 sort_map = {"인기도순": "POPULARITY_DESC", "평점순": "SCORE_DESC"}
+if st.session_state.logged_in:
+    sort_map["내 평점순"] = "MY_SCORE_DESC"
 
 # 필터 상태 감지 (변경 시 목록 초기화)
 current_filters = {
     "q": new_search, "y": s_year, "s": s_season, 
     "g": str(s_genres), "eg": str(s_ex_genres),
-    "only_w": only_w, "adult": s_adult, "rating": s_rating,
+    "only_w": only_w, "only_not_w": only_not_w, "adult": s_adult, "rating": s_rating,
     "sort": st.session_state.sort_by
 }
 
@@ -660,25 +672,55 @@ if st.session_state.last_filters != current_filters:
 # 데이터 로드 (필요할 때만)
 if st.session_state.has_next and (not st.session_state.all_media or len(st.session_state.all_media) < st.session_state.page * 24):
     target_ids = None
+    exclude_ids = None
+    
+    # 1. 시청한 작품 필터링 및 정렬용 ID 목록 생성
     if only_w:
         target_ids = [aid for aid, info in st.session_state.watched_list.items() if info.get('rating', 0) >= s_rating]
+        
+        # "내 평점순"인 경우 ID 목록 자체를 평점순(1순위) + 시청 횟수순(2순위)으로 미리 정렬
+        if st.session_state.sort_by == "내 평점순":
+            target_ids.sort(key=lambda aid: (
+                st.session_state.watched_list[aid].get('rating', 0), 
+                st.session_state.watched_list[aid].get('count', 1)
+            ), reverse=True)
+            
         if not target_ids: 
             target_ids = [0]
         else:
-            # AniList id_in limit is typically around 500
+            # AniList id_in limit (일반적으로 500개)
             target_ids = target_ids[:500]
+    
+    if only_not_w:
+        exclude_ids = list(st.session_state.watched_list.keys())
+        if exclude_ids:
+            exclude_ids = exclude_ids[:500]
+
+    # API용 정렬 값 결정
+    api_sort = sort_map.get(st.session_state.sort_by, "POPULARITY_DESC")
+    if api_sort == "MY_SCORE_DESC":
+        api_sort = "POPULARITY_DESC" # API에는 인기도순으로 요청하고 결과만 재정렬
 
     data = fetch_anime(
         st.session_state.page, 
-        sort_map[st.session_state.sort_by], 
+        api_sort, 
         s_year, s_season, s_genres, s_ex_genres,
         new_search if new_search else None,
         ids=target_ids,
+        exclude_ids=exclude_ids,
         include_adult=s_adult
     )
 
     if data:
         new_items = data['media']
+        
+        # "내 평점순"인 경우 가져온 결과 내에서 다시 한 번 정렬 (평점 -> 시청 횟수 순)
+        if st.session_state.sort_by == "내 평점순":
+            new_items.sort(key=lambda x: (
+                st.session_state.watched_list.get(x['id'], {}).get('rating', 0),
+                st.session_state.watched_list.get(x['id'], {}).get('count', 1)
+            ), reverse=True)
+            
         existing_ids = {m['id'] for m in st.session_state.all_media}
         for item in new_items:
             if item['id'] not in existing_ids:

@@ -349,9 +349,31 @@ if "code" in q_params:
             
             if state in oauth_storage: del oauth_storage[state]
             st.session_state.code_verifier = None
-            # st.query_params.clear()를 여기서 호출하지 않습니다.
-            # 스크립트가 끝까지 실행되어야 쿠키 저장 명령이 브라우저에 도달합니다.
+            
+            u_email = result.get("email", "")
+            u_name = result.get("name", "")
+            
             st.success("로그인 성공! 세션이 연결되었습니다.")
+            
+            # 배포 환경 대응: 부모 창을 사용자 정보가 포함된 URL로 이동시킴
+            new_params = f"?u_email={u_email}&u_name={u_name}"
+            st.components.v1.html(f"""
+                <script>
+                    var root = window.parent;
+                    var opener = root.opener;
+                    var targetUrl = root.location.origin + root.location.pathname + "{new_params}";
+                    
+                    if (opener && opener !== root) {{
+                        // 1. 새 탭/팝업인 경우 부모 창 이동 후 자신을 닫음
+                        opener.location.href = targetUrl;
+                        setTimeout(function() {{ root.close(); }}, 100);
+                    }} else {{
+                        // 2. 현재 창인 경우 즉시 이동
+                        root.location.href = targetUrl;
+                    }}
+                </script>
+            """, height=0)
+            st.stop()
         elif isinstance(result, Exception):
             if st.session_state.logged_in:
                 st.query_params.clear()

@@ -819,32 +819,47 @@ with st.sidebar:
     search_q = st.query_params.get("q", "")
     new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목", key="search_input")
 
-    # 모바일 키보드 '돋보기' 설정 및 검색 시 사이드바 자동 닫기 JS
+    # 모바일 키보드 '돋보기' 설정 및 검색 시 사이드바 자동 닫기 JS (강화 버전)
     st.components.v1.html("""
         <script>
-            setTimeout(() => {
+            function handleMobileSearch() {
                 const inputs = window.parent.document.querySelectorAll('input[type="text"]');
                 inputs.forEach(input => {
                     if (input.placeholder === "영문 또는 일문 제목") {
                         input.type = "search";
                         input.setAttribute("enterkeyhint", "search");
                         
-                        input.addEventListener("keydown", (e) => {
+                        // 기존 리스너 제거 (중복 방지)
+                        input.removeEventListener("keydown", input._searchHandler);
+                        
+                        input._searchHandler = (e) => {
                             if (e.key === "Enter") {
-                                // 1. 키보드 내리기
+                                // 1. 키보드 즉시 내리기
                                 input.blur();
                                 
-                                // 2. 사이드바 닫기 (모바일 대응)
-                                // Streamlit의 사이드바 닫기 버튼은 data-testid="stSidebarCollapseButton"을 가짐
-                                const sidebarCloseBtn = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]');
-                                if (sidebarCloseBtn) {
-                                    sidebarCloseBtn.click();
+                                // 2. 모바일 환경(너비 < 768px)에서만 사이드바 닫기
+                                if (window.parent.innerWidth < 768) {
+                                    // 사이드바 상태 확인 (열려 있는 경우에만 닫기 버튼 클릭)
+                                    const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+                                    if (sidebar && sidebar.offsetParent !== null) {
+                                        // 닫기 버튼 찾기 (아이콘 형태나 레이블로 확인)
+                                        const closeBtn = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]') || 
+                                                         window.parent.document.querySelector('button[aria-label="Close sidebar"]');
+                                        if (closeBtn) {
+                                            closeBtn.click();
+                                        }
+                                    }
                                 }
                             }
-                        });
+                        };
+                        input.addEventListener("keydown", input._searchHandler);
                     }
                 });
-            }, 500);
+            }
+            
+            // DOM 로드 대기 후 실행
+            setTimeout(handleMobileSearch, 300);
+            setTimeout(handleMobileSearch, 1000); // 동적 로딩 대응
         </script>
     """, height=0)
 

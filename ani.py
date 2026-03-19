@@ -240,63 +240,50 @@ if 'logged_in' not in st.session_state:
     st.session_state.user_info = None
     st.session_state.watched_list = {}
     st.session_state.auth_checked = False
+    st.session_state.logout_clicked = False # 로그아웃 플래그 추가
 
 if 'all_media' not in st.session_state: st.session_state.all_media = []
-if 'page' not in st.session_state: st.session_state.page = 1
-if 'has_next' not in st.session_state: st.session_state.has_next = True
-if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
-if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
-if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
+... (생략) ...
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
-    # 1. 이미 로그인된 세션이면 통과
+    # 로그아웃 버튼을 방금 눌렀다면 자동 로그인 시도 안 함
+    if st.session_state.get('logout_clicked'):
+        return False
+
     if st.session_state.get('logged_in'):
         return True
         
-    # 2. 쿠키 기반 세션 복구 확인 (로그인 전)
-    # [수정] 새로운 쿠키 키 'anime_user_session' 사용
+    # 쿠키 기반 세션 복구 확인
     user_key = "anime_user_session"
     
     if all_cookies is None:
-        st.stop() 
+        return False
         
-    if user_key in all_cookies and not st.session_state.get('logged_in'):
+    if user_key in all_cookies:
         try:
             import base64
             raw_data = all_cookies[user_key]
             
-            # [수정] Base64 디코딩 로직 추가
+            # Base64 디코딩 및 파싱
             try:
-                # URL 인코딩된 경우 먼저 디코딩
                 import urllib.parse
                 if isinstance(raw_data, str) and "%" in raw_data:
                     raw_data = urllib.parse.unquote(raw_data)
-                
-                # Base64 디코딩 시도
-                decoded_bytes = base64.b64decode(raw_data)
-                decoded_str = decoded_bytes.decode('utf-8')
+                decoded_str = base64.b64decode(raw_data).decode('utf-8')
                 user_info = json.loads(decoded_str)
-            except Exception as decode_err:
-                # 만약 Base64가 아니면 기존 JSON 방식 시도 (하위 호환성)
+            except:
                 user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
             
-            if user_info and isinstance(user_info, dict):
+            if user_info and isinstance(user_info, dict) and "email" in user_info:
                 st.session_state.user_info = user_info
                 st.session_state.logged_in = True
+                # 데이터를 확실히 불러온 후 리런
                 st.session_state.watched_list = load_watched_from_db()
-                st.sidebar.success("✅ 세션 복구 성공! (자동 로그인)")
                 st.rerun() 
         except Exception as e:
-            st.sidebar.error(f"⚠️ 세션 복구 에러: {e}")
-            # 에러 발생 시 쿠키 삭제 시도 (잘못된 데이터 방지)
-            # cookie_manager.delete(user_key)
-        
-    # 3. OAuth 콜백 처리
-    if "code" in st.query_params and not st.session_state.logged_in:
-        return True
-        
-    return True
+            st.sidebar.error(f"⚠️ 세션 복구 실패: {e}")
+    return False
 
 # 보호막 가동
 run_auth_shield()

@@ -252,32 +252,16 @@ def run_auth_shield():
     if st.session_state.get('logged_in'):
         return True
         
-    # 2. 쿠키 기반 세션 복구 확인
+    # 2. 쿠키 기반 세션 복구 확인 (로그인 전)
     user_key = f"user_{app_id}"
     cookies = cookie_manager.get_all()
     
-    # [진단] 사이드바 하단에 쿠키 상태 표시
-    with st.sidebar:
-        st.divider()
-        with st.expander("🛠️ 쿠키 진단 도구", expanded=False):
-            if cookies is None:
-                st.caption("⏳ 쿠키 매니저 로딩 중...")
-            elif not cookies:
-                st.caption("🍪 감지된 쿠키 없음 (첫 방문이거나 차단됨)")
-            else:
-                st.caption(f"✅ 감지된 키: {list(cookies.keys())}")
-                if user_key in cookies:
-                    st.caption("🎯 대상 쿠키(user_key) 발견됨")
-                else:
-                    st.caption("⚠️ 대상 쿠키가 목록에 없음")
-
     if cookies is None:
         st.stop() 
         
     if user_key in cookies and not st.session_state.get('logged_in'):
         try:
             raw_data = cookies[user_key]
-            # URL 인코딩된 경우 처리
             import urllib.parse
             if isinstance(raw_data, str) and "%22" in raw_data:
                 raw_data = urllib.parse.unquote(raw_data)
@@ -292,9 +276,8 @@ def run_auth_shield():
                 st.rerun() 
         except Exception as e:
             st.sidebar.error(f"⚠️ 세션 복구 에러: {e}")
-            st.sidebar.info(f"데이터 내용: {str(raw_data)[:50]}...")
         
-    # 3. OAuth 콜백 처리 (쿠키가 없을 때만 진행)
+    # 3. OAuth 콜백 처리
     if "code" in st.query_params and not st.session_state.logged_in:
         return True
         
@@ -302,6 +285,39 @@ def run_auth_shield():
 
 # 보호막 가동
 run_auth_shield()
+
+# --- [진단 도구: 사이드바 항상 노출] ---
+with st.sidebar:
+    st.divider()
+    with st.expander("🛠️ 쿠키 상세 진단", expanded=False):
+        cookies = cookie_manager.get_all()
+        user_key = f"user_{app_id}"
+        
+        if cookies is None:
+            st.caption("⏳ 쿠키 매니저 로딩 중...")
+        elif not cookies:
+            st.warning("🍪 감지된 쿠키 없음")
+            st.info("브라우저 설정에서 '타사 쿠키 차단'이 켜져 있는지 확인해 주세요.")
+        else:
+            st.write(f"📊 감지된 키 개수: {len(cookies)}개")
+            st.code(list(cookies.keys()))
+            
+            if user_key in cookies:
+                st.success("🎯 앱 쿠키가 브라우저에 존재함")
+                if st.button("내용 보기"):
+                    st.json(cookies[user_key])
+            else:
+                st.error("❌ 앱 쿠키가 목록에 없음")
+                
+        if st.button("🧪 즉석 쿠키 테스트"):
+            test_key = "test_cookie_123"
+            cookie_manager.set(test_key, "working", expires_at=datetime.now() + timedelta(days=1))
+            st.components.v1.html(f"""
+                <script>
+                    document.cookie = "{test_key}_js=working; path=/; SameSite=None; Secure";
+                    alert("테스트 쿠키 쓰기 명령 완료! 새로고침 후 목록에 나타나는지 확인하세요.");
+                </script>
+            """, height=0)
 
 if 'page' not in st.session_state: st.session_state.page = 1
 if 'code_verifier' not in st.session_state: st.session_state.code_verifier = None

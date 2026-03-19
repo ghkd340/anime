@@ -243,7 +243,11 @@ if 'logged_in' not in st.session_state:
     st.session_state.logout_clicked = False # 로그아웃 플래그 추가
 
 if 'all_media' not in st.session_state: st.session_state.all_media = []
-... (생략) ...
+if 'page' not in st.session_state: st.session_state.page = 1
+if 'has_next' not in st.session_state: st.session_state.has_next = True
+if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
+if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
+if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():

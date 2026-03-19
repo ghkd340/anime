@@ -322,13 +322,24 @@ if "code" in q_params:
     code = q_params.get("code")
     state = q_params.get("state")
     
+    # 3중 복구 로직: 세션 -> 서버 메모리 -> 쿠키 순으로 verifier 확인
     verifier = st.session_state.get('code_verifier')
     if not verifier and state:
         verifier = oauth_storage.get(state)
     
+    if not verifier:
+        # 쿠키에서 복구 시도
+        cookies = cookie_manager.get_all()
+        cv_key = f"cv_{app_id}"
+        if cookies and cv_key in cookies:
+            verifier = cookies[cv_key]
+    
     if verifier:
         result = perform_secure_token_exchange(code, state, verifier)
         if isinstance(result, dict):
+            # 로그인 성공 시 사용한 쿠키 제거
+            cookie_manager.delete(f"cv_{app_id}")
+            
             st.session_state.logged_in = True
             st.session_state.user_info = result
             st.session_state.watched_list = load_watched_from_db()
@@ -407,6 +418,11 @@ with st.sidebar:
                 st.session_state.google_auth_url = auth_url
                 st.session_state.code_verifier = flow.code_verifier
                 oauth_storage[state] = flow.code_verifier
+                
+                # 쿠키에 verifier 백업 (세션 만료 대비)
+                try:
+                    cookie_manager.set(f"cv_{app_id}", flow.code_verifier, expires_at=datetime.now() + timedelta(minutes=10))
+                except: pass
             
             # 새 탭(또는 새 창)으로 열기 (기본 브라우저 기능 이용)
             st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_blank" rel="opener" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)

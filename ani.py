@@ -402,19 +402,38 @@ def run_auth_shield():
                     st.session_state.user_info = user_info
                     st.session_state.logged_in = True
                     
-                    # 쿠키 저장 (30일 유지)
+                    # 1. 컴포넌트 방식으로 쿠키 저장
                     user_key = "anime_user_session"
+                    expires = datetime.now() + timedelta(days=30)
                     cookie_manager.set(
                         user_key, 
                         user_info, 
-                        expires_at=datetime.now() + timedelta(days=30),
+                        expires_at=expires,
                         key="save_user_cookie"
                     )
+                    
+                    # 2. 자바스크립트 방식으로 직접 쿠키 저장 (시크릿 모드/iframe 차단 대비)
+                    # JSON 데이터를 안전하게 문자열화
+                    user_info_json = json.dumps(user_info, ensure_ascii=False)
+                    import urllib.parse
+                    encoded_user_info = urllib.parse.quote(user_info_json)
+                    
+                    st.components.v1.html(f"""
+                        <script>
+                            const cookieValue = "{encoded_user_info}";
+                            const expires = "{expires.strftime('%a, %d %b %Y %H:%M:%S GMT')}";
+                            document.cookie = "{user_key}=" + cookieValue + "; path=/; expires=" + expires + "; SameSite=Lax";
+                            // 부모 창에도 시도 (Streamlit 구조 대응)
+                            window.parent.document.cookie = "{user_key}=" + cookieValue + "; path=/; expires=" + expires + "; SameSite=Lax";
+                        </script>
+                    """, height=0)
                     
                     # 시청 목록 즉시 로드
                     st.session_state.watched_list = load_watched_from_db(user_info["email"])
                     
-                    # URL 파라미터 제거 및 새로고침
+                    # 쿠키가 저장될 시간을 아주 잠시 기다린 후 새로고침
+                    import time
+                    time.sleep(0.5)
                     st.query_params.clear()
                     st.rerun()
             except Exception as e:

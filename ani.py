@@ -581,7 +581,9 @@ with st.sidebar:
             st.session_state.logged_in = False
             st.session_state.user_info = None
             st.session_state.watched_list = {}
-            st.info("로그아웃 되었습니다. 잠시 후 새로고침 해주세요.")
+            st.session_state.logout_clicked = True # 이 플래그가 자동 로그인을 막습니다.
+            
+            st.success("로그아웃 중입니다...")
             st.rerun()
 
     st.divider()

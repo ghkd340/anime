@@ -662,7 +662,7 @@ with st.sidebar:
 
 # 6. API 호출 (캐싱)
 @st.cache_data(ttl=3600)
-def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, watched_list=None):
+def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
     url = 'https://graphql.anilist.co'
     media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear"
     
@@ -682,7 +682,7 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
     def build_query(is_adult_filter):
         return f'''
         query ($y: Int, $s: MediaSeason, $p: Int, $sort: [MediaSort], $g: [String], $eg: [String], $q: String, $ids: [Int], $ex_ids: [Int]) {{
-          Page(page: $p, perPage: 40) {{
+          Page(page: $p, perPage: 24) {{
             pageInfo {{ lastPage hasNextPage }}
             media(id_in: $ids, id_not_in: $ex_ids, search: $q, season: $s, seasonYear: $y, type: ANIME, sort: $sort, genre_in: $g, genre_not_in: $eg, isAdult: {is_adult_filter}) {{
               {media_fields}
@@ -725,23 +725,20 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
             
             combined_media = d_normal.get('media', []) + d_adult.get('media', [])
             
-            # 파이썬 재정렬 (병합된 리스트 전체에 대해 수행)
-            if any("POPULARITY_DESC" in s for s in sort):
-                combined_media.sort(key=lambda x: x.get('popularity', 0) or 0, reverse=True)
-            elif any("SCORE_DESC" in s for s in sort):
+            # 파이썬 재정렬
+            if "POPULARITY_DESC" in sort:
+                combined_media.sort(key=lambda x: x.get('popularity', 0), reverse=True)
+            elif "SCORE_DESC" in sort:
                 combined_media.sort(key=lambda x: x.get('averageScore', 0) or 0, reverse=True)
-            elif watched_list and any("MY_SCORE_DESC" in s for s in sort):
-                combined_media.sort(key=lambda x: (
-                    watched_list.get(str(x['id']), watched_list.get(x['id'], {})).get('rating', 0),
-                    watched_list.get(str(x['id']), watched_list.get(x['id'], {})).get('count', 1)
-                ), reverse=True)
+            elif "TITLE_DESC" in sort:
+                combined_media.sort(key=lambda x: (x['title']['native'] or x['title']['romaji'] or ""), reverse=True)
             
             return {
                 "pageInfo": {
                     "lastPage": max(d_normal.get('pageInfo', {}).get('lastPage', 1), d_adult.get('pageInfo', {}).get('lastPage', 1)),
                     "hasNextPage": d_normal.get('pageInfo', {}).get('hasNextPage', False) or d_adult.get('pageInfo', {}).get('hasNextPage', False)
                 },
-                "media": combined_media
+                "media": combined_media[:24]
             }
     except Exception as e:
         st.error(f"Fetch Error: {e}")
@@ -795,42 +792,33 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
 
     # API용 정렬 값 결정
     api_sort = sort_map.get(st.session_state.sort_by, "POPULARITY_DESC")
-    actual_api_sort = api_sort
     if api_sort == "MY_SCORE_DESC":
-        # 내 평점순인 경우, API에는 평점순(SCORE_DESC)으로 요청하여 
-        # 상위 평점 작품들이 우선적으로 불려오게 유도한 뒤 로컬에서 재정렬
-        actual_api_sort = "SCORE_DESC"
+        api_sort = "POPULARITY_DESC" # API에는 인기도순으로 요청하고 결과만 재정렬
 
     data = fetch_anime(
         st.session_state.page, 
-        actual_api_sort, 
+        api_sort, 
         s_year, s_season, s_genres, s_ex_genres,
         new_search if new_search else None,
         ids=target_ids,
         exclude_ids=exclude_ids,
-        include_adult=s_adult,
-        watched_list=st.session_state.watched_list if st.session_state.logged_in else None
+        include_adult=s_adult
     )
 
     if data:
         new_items = data['media']
         
+        # "내 평점순"인 경우 가져온 결과 내에서 다시 한 번 정렬 (평점 -> 시청 횟수 순)
+        if st.session_state.sort_by == "내 평점순":
+            new_items.sort(key=lambda x: (
+                st.session_state.watched_list.get(x['id'], {}).get('rating', 0),
+                st.session_state.watched_list.get(x['id'], {}).get('count', 1)
+            ), reverse=True)
+            
         existing_ids = {m['id'] for m in st.session_state.all_media}
         for item in new_items:
             if item['id'] not in existing_ids:
                 st.session_state.all_media.append(item)
-        
-        # --- 글로벌 정렬 적용 (모든 데이터에 대해) ---
-        if st.session_state.sort_by == "내 평점순":
-            st.session_state.all_media.sort(key=lambda x: (
-                st.session_state.watched_list.get(x['id'], {}).get('rating', 0),
-                st.session_state.watched_list.get(x['id'], {}).get('count', 1)
-            ), reverse=True)
-        elif st.session_state.sort_by == "평점순":
-            st.session_state.all_media.sort(key=lambda x: x.get('averageScore', 0) or 0, reverse=True)
-        elif st.session_state.sort_by == "인기도순":
-            st.session_state.all_media.sort(key=lambda x: x.get('popularity', 0) or 0, reverse=True)
-
         st.session_state.has_next = data['pageInfo']['hasNextPage']
         st.session_state.total_pages = data['pageInfo']['lastPage']
 

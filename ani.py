@@ -562,28 +562,29 @@ with st.sidebar:
                 st.caption("데이터가 없습니다.")
 
         if st.button("로그아웃"):
-            # --- 쿠키 삭제 (새로운 이름 적용 및 안전한 삭제) ---
+            # 1. URL 파라미터에 logout=true 설정 (새로고침 대비)
+            st.query_params["logout"] = "true"
+            
+            # 2. 쿠키 삭제 (새로운 이름 적용 및 안전한 삭제)
             cookie_name = "anime_user_session"
             try:
                 cookie_manager.delete(cookie_name)
-            except: 
-                pass # 이미 없거나 삭제 실패 시에도 진행
+            except: pass
             
             st.components.v1.html(f"""
                 <script>
-                    // 모든 가능성 있는 쿠키 이름 삭제 시도
                     document.cookie = "{cookie_name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure";
                     document.cookie = "user_{app_id}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure";
                 </script>
             """, height=0)
 
-            # 상태 변경
+            # 3. 세션 상태 초기화
             st.session_state.logged_in = False
             st.session_state.user_info = None
             st.session_state.watched_list = {}
-            st.session_state.logout_clicked = True # 이 플래그가 자동 로그인을 막습니다.
+            st.session_state.logout_clicked = True
             
-            st.success("로그아웃 중입니다...")
+            st.success("로그아웃 되었습니다.")
             st.rerun()
 
     st.divider()

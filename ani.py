@@ -375,7 +375,8 @@ with st.sidebar:
                 st.session_state.code_verifier = flow.code_verifier
                 oauth_storage[state] = flow.code_verifier
             
-            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_self" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
+            # 새 탭(또는 새 창)으로 열기 (기본 브라우저 기능 이용)
+            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_blank" rel="opener" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
     else:
         st.success(f"**{st.session_state.user_info.get('name')}**님")
         

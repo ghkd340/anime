@@ -353,23 +353,29 @@ if "code" in q_params:
             u_email = result.get("email", "")
             u_name = result.get("name", "")
             
+            # 파이썬 레벨에서 먼저 파라미터 설정 (배포 환경 브라우저 연동 강화)
+            st.query_params["u_email"] = u_email
+            st.query_params["u_name"] = u_name
+            
             st.success("로그인 성공! 세션이 연결되었습니다.")
             
-            # 배포 환경 대응: 부모 창을 사용자 정보가 포함된 URL로 이동시킴
+            # 자바스크립트로 부모 창 리다이렉트 및 현재 창 닫기
             new_params = f"?u_email={u_email}&u_name={u_name}"
             st.components.v1.html(f"""
                 <script>
-                    var root = window.parent;
-                    var opener = root.opener;
-                    var targetUrl = root.location.origin + root.location.pathname + "{new_params}";
+                    var topWindow = window.top;
+                    var openerWindow = topWindow.opener;
+                    var targetUrl = topWindow.location.origin + topWindow.location.pathname + "{new_params}";
                     
-                    if (opener && opener !== root) {{
-                        // 1. 새 탭/팝업인 경우 부모 창 이동 후 자신을 닫음
-                        opener.location.href = targetUrl;
-                        setTimeout(function() {{ root.close(); }}, 100);
+                    if (openerWindow && openerWindow !== topWindow) {{
+                        try {{
+                            openerWindow.location.href = targetUrl;
+                            setTimeout(function() {{ topWindow.close(); }}, 300);
+                        }} catch (e) {{
+                            topWindow.location.href = targetUrl;
+                        }}
                     }} else {{
-                        // 2. 현재 창인 경우 즉시 이동
-                        root.location.href = targetUrl;
+                        topWindow.location.href = targetUrl;
                     }}
                 </script>
             """, height=0)

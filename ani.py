@@ -363,32 +363,32 @@ if "code" in q_params:
             st.session_state.user_info = result
             st.session_state.watched_list = load_watched_from_db()
             
-            # 쿠키 저장 (SameSite=None; Secure 설정을 위해 JS 주입 병행)
+            # 쿠키 저장 (이름 단순화 및 Base64 인코딩으로 성공률 극대화)
             try:
-                cookie_name = f"user_{app_id}"
+                import base64
+                cookie_name = "anime_user_session" # 하이픈 제거한 단순한 이름
                 cookie_data = {
                     "name": result.get("name"),
                     "email": result.get("email"),
                     "picture": result.get("picture")
                 }
-                cookie_val = json.dumps(cookie_data)
+                # 데이터를 Base64로 인코딩 (특수문자 문제 완전 해결)
+                json_str = json.dumps(cookie_data)
+                b64_val = base64.b64encode(json_str.encode()).decode()
                 
-                # 1. stx.CookieManager를 통한 기본 저장
+                # 1. 라이브러리 저장
                 cookie_manager.set(
                     cookie_name, 
-                    cookie_val, 
+                    b64_val, 
                     expires_at=datetime.now() + timedelta(days=30)
                 )
                 
-                # 2. [해결 시도 1 & 2] SameSite=None; Secure 직접 설정을 위한 JS 주입
-                # Streamlit Cloud 등 IFrame 환경에서의 차단을 방지합니다.
+                # 2. JS 직접 주입 (SameSite/Secure 정책 강제 적용)
                 expires = (datetime.now() + timedelta(days=30)).strftime("%a, %d %b %Y %H:%M:%S GMT")
                 st.components.v1.html(f"""
                     <script>
-                        const cName = "{cookie_name}";
-                        const cValue = encodeURIComponent(JSON.stringify({cookie_val}));
-                        document.cookie = cName + "=" + cValue + "; path=/; expires={expires}; SameSite=None; Secure";
-                        console.log("Cookie security headers applied via JS");
+                        document.cookie = "{cookie_name}=" + "{b64_val}" + "; path=/; expires={expires}; SameSite=None; Secure";
+                        console.log("App cookie saved with Base64 encoding");
                     </script>
                 """, height=0)
                 

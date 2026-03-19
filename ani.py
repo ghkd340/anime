@@ -116,6 +116,19 @@ st.markdown("""
     span[data-baseweb="tag"] div:hover {
         background-color: rgba(255, 255, 255, 0.2) !important;
     }
+    .relation-item {
+        display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+        padding: 5px; border-radius: 8px; background: rgba(128, 128, 128, 0.05);
+        border: 1px solid rgba(128, 128, 128, 0.1);
+    }
+    .relation-type {
+        font-size: 0.7rem; color: #fff; background: #666;
+        padding: 2px 6px; border-radius: 4px; min-width: 60px; text-align: center;
+    }
+    .relation-title {
+        font-size: 0.85rem; font-weight: 600; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; flex-grow: 1;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -496,7 +509,7 @@ run_auth_shield()
 @st.cache_data(ttl=3600)
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
     url = 'https://graphql.anilist.co'
-    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site }"
+    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site } relations { edges { relationType(version: 2) node { id title { native romaji } siteUrl coverImage { medium } type } } }"
     
     # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
@@ -817,7 +830,17 @@ with st.sidebar:
     
     # 제목 검색 (즉시 반영)
     search_q = st.query_params.get("q", "")
-    new_search = st.text_input("제목 검색", value=search_q, placeholder="영문 또는 일문 제목", key="search_input")
+    
+    # 1. '이름으로 검색' 버튼 등으로 URL이 외부에서 바뀌었을 때만 위젯 상태 동기화
+    if "prev_q" not in st.session_state:
+        st.session_state.prev_q = search_q
+        
+    if search_q != st.session_state.prev_q:
+        st.session_state.search_input = search_q
+        st.session_state.prev_q = search_q
+        
+    # 2. 위젯 생성 (value 인자 제거하여 세션 상태와 충돌 방지)
+    new_search = st.text_input("제목 검색", placeholder="영문 또는 일문 제목", key="search_input")
 
     # 모바일 키보드 제어 JS (검색창은 키보드 활성화, 필터류는 비활성화)
     st.components.v1.html("""
@@ -860,6 +883,7 @@ with st.sidebar:
 
     if new_search != search_q:
         st.query_params["q"] = new_search
+        st.session_state.prev_q = new_search # 변경된 값을 즉시 반영하여 역동기화 방지
         st.session_state.page = 1
         st.rerun()
 
@@ -1102,7 +1126,20 @@ else:
                 st.markdown('<div class="empty-comment-box"></div>', unsafe_allow_html=True)
 
             c1, c2, c3 = st.columns(3, gap="small")
-            c1.link_button("상세", anime['siteUrl'], use_container_width=True)
+            
+            # 상세 팝오버
+            with c1.popover("상세", use_container_width=True, key=f"pop_detail_{a_id}"):
+                st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
+                
+                st.divider()
+                if st.button("🔍 이름으로 검색", key=f"btn_search_{a_id}", use_container_width=True, type="primary"):
+                    title = anime['title']['native'] or anime['title']['romaji']
+                    # URL 파라미터만 갱신 (위젯 상태는 다음 런의 최상단 동기화 로직에서 처리)
+                    st.query_params["q"] = title
+                    # 목록 초기화 및 페이지 리셋
+                    st.session_state.all_media = []
+                    st.session_state.page = 1
+                    st.rerun()
             
             # 예고편 버튼
             trailer = anime.get('trailer')

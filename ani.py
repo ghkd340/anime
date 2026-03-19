@@ -6,6 +6,8 @@ from firebase_admin import credentials, firestore
 import json
 import os
 import random
+import threading
+import concurrent.futures
 import extra_streamlit_components as stx
 
 # 구글 인증 관련 라이브러리
@@ -14,7 +16,7 @@ from google.oauth2 import id_token
 from google.auth.transport.requests import Request as GoogleRequest
 
 # 1. 사이트 기본 설정
-st.set_page_config(page_title="K's 애니 아카이브", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="애니 아카이브", page_icon="🎬", layout="wide")
 
 # --- 쿠키 매니저 설정 (고유 키 추가) ---
 # --- 쿠키 매니저 설정 및 데이터 로드 (최상단 통합) ---
@@ -217,31 +219,35 @@ def load_watched_from_db(user_email):
         raise e
 
 def update_db(anime_id, action="add", rating=5.0, comment="", count=1):
-    """특정 작품 정보만 업데이트하거나 삭제합니다."""
+    """백그라운드 쓰레드에서 DB를 업데이트하여 UI 차단을 방지합니다."""
     if not db or not st.session_state.get("logged_in"): return
     user_email = st.session_state.user_info.get("email")
     user_ref = db.collection("artifacts").document(app_id).collection("users").document(user_email)
     
-    try:
-        if action == "add":
-            user_ref.set({
-                "watched": {
-                    str(anime_id): {
-                        "id": anime_id, 
-                        "at": datetime.now(), 
-                        "rating": rating,
-                        "comment": comment,
-                        "count": count
+    def run_in_thread():
+        try:
+            if action == "add":
+                user_ref.set({
+                    "watched": {
+                        str(anime_id): {
+                            "id": anime_id, 
+                            "at": datetime.now(), 
+                            "rating": rating,
+                            "comment": comment,
+                            "count": count
+                        }
                     }
-                }
-            }, merge=True)
-        else:
-            user_ref.update({
-                f"watched.{anime_id}": firestore.DELETE_FIELD
-            })
-        load_watched_from_db.clear()
-    except Exception as e:
-        st.error(f"DB 업데이트 실패: {e}")
+                }, merge=True)
+            else:
+                user_ref.update({
+                    f"watched.{anime_id}": firestore.DELETE_FIELD
+                })
+        except Exception: pass
+
+    # 쓰레드 시작 (백그라운드 작업)
+    threading.Thread(target=run_in_thread, daemon=True).start()
+    # 캐시 클리어는 즉시 수행하여 다음 로드 시 반영되도록 함
+    load_watched_from_db.clear()
 
 # --- 유틸리티 함수 (Module Level) ---
 @st.cache_data(ttl=86400)
@@ -434,13 +440,16 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
                 return None
             return data
         else:
-            # 병합 모드: 일반물과 성인물을 각각 조회하여 병합
-            d_normal, e_normal = make_request(False)
-            d_adult, e_adult = make_request(True)
+            # 병렬 요청으로 속도 개선 (정상/성인물 동시 조회)
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future_normal = executor.submit(make_request, False)
+                future_adult = executor.submit(make_request, True)
+                
+                d_normal, e_normal = future_normal.result()
+                d_adult, e_adult = future_adult.result()
             
             if e_normal and e_adult:
-                st.error(f"API Error (Normal): {e_normal}")
-                st.error(f"API Error (Adult): {e_adult}")
+                st.error(f"API Error: {e_normal}")
                 return None
                 
             d_normal = d_normal or {}
@@ -937,14 +946,17 @@ else:
                         u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_edit_{a_id}_{ac}")
                         
                         if st.button("업데이트", key=f"btn_update_{a_id}_{ac}", use_container_width=True, type="primary"):
+                            # 낙관적 업데이트: UI에 즉시 반영
                             if st.session_state.watched_list is None: st.session_state.watched_list = {}
                             st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
+                            # 백그라운드 저장 시동
                             update_db(a_id, "add", u_score, u_comment, u_count)
                             st.session_state.action_cnt += 1
                             st.rerun()
                             
                         st.divider()
                         if st.button("시청 기록 삭제", key=f"btn_delete_{a_id}_{ac}", use_container_width=True):
+                            # 낙관적 삭제
                             if st.session_state.watched_list is not None:
                                 st.session_state.watched_list.pop(a_id, None)
                             update_db(a_id, "remove")
@@ -956,6 +968,7 @@ else:
                         u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
                         
                         if st.button("저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
+                            # 낙관적 저장
                             if st.session_state.watched_list is None: st.session_state.watched_list = {}
                             st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
                             update_db(a_id, "add", u_score, u_comment, u_count)

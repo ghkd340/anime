@@ -402,31 +402,29 @@ if "code" in q_params:
 
             st.success("로그인 성공! 세션이 연결되었습니다.")
             
-            # 자바스크립트 통합 처리: 쿠키 저장 + 부모 창 리다이렉트
-            # 배포 환경 iframe 보안 이슈 대응을 위해 JS로 직접 쿠키 주입 시도
+            # 자바스크립트 통합 처리: 부모 창에서 쿠키 저장 + 부모 창 리다이렉트
             new_params = f"?u_email={u_email}&u_name={u_name}"
             st.components.v1.html(f"""
                 <script>
                     var topWindow = window.top;
                     var openerWindow = topWindow.opener;
-                    
-                    // 1. 직접 쿠키 저장 시도 (Lax)
-                    var expiry = new Date();
-                    expiry.setTime(expiry.getTime() + (30*24*60*60*1000));
-                    var cookieStr = "user_{app_id}=" + encodeURIComponent('{cookie_data}') + "; expires=" + expiry.toUTCString() + "; path=/; SameSite=Lax; Secure";
-                    document.cookie = cookieStr;
-
-                    // 2. 부모 창 리다이렉트
                     var targetUrl = topWindow.location.origin + topWindow.location.pathname + "{new_params}";
                     
+                    function setCookieOnWindow(win) {{
+                        var expiry = new Date();
+                        expiry.setTime(expiry.getTime() + (30*24*60*60*1000));
+                        var cookieStr = "user_{app_id}=" + encodeURIComponent('{cookie_data}') + "; expires=" + expiry.toUTCString() + "; path=/; SameSite=Lax; Secure";
+                        try {{ win.document.cookie = cookieStr; }} catch(e) {{ console.error("Cookie error:", e); }}
+                    }}
+
                     if (openerWindow && openerWindow !== topWindow) {{
-                        try {{
-                            openerWindow.location.href = targetUrl;
-                            setTimeout(function() {{ topWindow.close(); }}, 300);
-                        }} catch (e) {{
-                            topWindow.location.href = targetUrl;
-                        }}
+                        // 1. 새 탭인 경우: 부모 창 도메인에서 쿠키를 굽고 리다이렉트
+                        setCookieOnWindow(openerWindow);
+                        openerWindow.location.href = targetUrl;
+                        setTimeout(function() {{ topWindow.close(); }}, 300);
                     }} else {{
+                        // 2. 현재 창인 경우: 현재 창에서 쿠키 굽고 이동
+                        setCookieOnWindow(topWindow);
                         topWindow.location.href = targetUrl;
                     }}
                 </script>

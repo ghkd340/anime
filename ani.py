@@ -36,10 +36,11 @@ st.markdown("""
         margin-top: 15px !important; height: 3.5rem !important; 
         line-height: 1.75rem !important; font-size: 1.1rem;
         font-weight: 700; overflow: hidden; display: -webkit-box;
-        -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: #111;
+        -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        color: var(--text-color);
     }
     .anime-info-box {
-        font-size: 0.85rem; color: #666; margin-top: 4px;
+        font-size: 0.85rem; color: var(--secondary-text-color); margin-top: 4px;
         height: 1.2rem; line-height: 1.2rem;
     }
     .score-box {
@@ -49,11 +50,11 @@ st.markdown("""
         height: 1.5rem;
     }
     .user-comment-box {
-        background-color: #f8f9fa; border-left: 3px solid #4CAF50;
+        background-color: rgba(128, 128, 128, 0.1); border-left: 3px solid #4CAF50;
         padding: 8px; border-radius: 4px; margin-bottom: 10px;
-        font-size: 0.85rem; color: #444; font-style: italic;
+        font-size: 0.85rem; color: var(--text-color); font-style: italic;
         height: 65px; overflow-y: auto;
-        box-sizing: border-box; /* 패딩/테두리 포함 높이 고정 */
+        box-sizing: border-box;
     }
     .empty-comment-box {
         height: 65px; margin-bottom: 10px;

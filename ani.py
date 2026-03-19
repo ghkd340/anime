@@ -346,7 +346,7 @@ if "code" in q_params:
             st.session_state.code_verifier = None
             # st.query_params.clear()를 여기서 호출하지 않습니다.
             # 스크립트가 끝까지 실행되어야 쿠키 저장 명령이 브라우저에 도달합니다.
-            st.success("로그인 성공! 세션이 연결되었습니다.")
+            st.success("로그인 성공! 이 창을 닫고 원래 창에서 새로고침 해주세요.")
         elif isinstance(result, Exception):
             if st.session_state.logged_in:
                 st.query_params.clear()
@@ -375,7 +375,7 @@ with st.sidebar:
                 st.session_state.code_verifier = flow.code_verifier
                 oauth_storage[state] = flow.code_verifier
             
-            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_self" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_blank" class="google-login-btn">G 구글 로그인</a>', unsafe_allow_html=True)
     else:
         st.success(f"**{st.session_state.user_info.get('name')}**님")
         

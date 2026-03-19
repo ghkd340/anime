@@ -251,14 +251,15 @@ if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
-    # 로그아웃 버튼을 방금 눌렀다면 자동 로그인 시도 안 함
-    if st.session_state.get('logout_clicked'):
+    # 1. URL에 logout=true가 있으면 자동 로그인 차단
+    if st.query_params.get("logout") == "true":
         return False
 
+    # 2. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
         return True
         
-    # 쿠키 기반 세션 복구 확인
+    # 3. 쿠키 기반 세션 복구 확인
     user_key = "anime_user_session"
     
     if all_cookies is None:
@@ -282,11 +283,10 @@ def run_auth_shield():
             if user_info and isinstance(user_info, dict) and "email" in user_info:
                 st.session_state.user_info = user_info
                 st.session_state.logged_in = True
-                # 데이터를 확실히 불러온 후 리런
                 st.session_state.watched_list = load_watched_from_db()
                 st.rerun() 
         except Exception as e:
-            st.sidebar.error(f"⚠️ 세션 복구 실패: {e}")
+            pass
     return False
 
 # 보호막 가동

@@ -371,8 +371,55 @@ def run_auth_shield():
     # 2. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
         return True
+    
+    # 3. 구글 OAuth 콜백 처리 (새로운 로그인 시도 시)
+    auth_code = st.query_params.get("code")
+    auth_state = st.query_params.get("state")
+    
+    if auth_code and auth_state:
+        # oauth_storage에서 code_verifier 복구
+        code_verifier = oauth_storage.get(auth_state)
+        if code_verifier:
+            try:
+                flow = get_google_auth_flow()
+                if flow:
+                    flow.fetch_token(code=auth_code, code_verifier=code_verifier)
+                    credentials = flow.credentials
+                    
+                    # ID 토큰 검증 및 사용자 정보 추출
+                    id_info = id_token.verify_oauth2_token(
+                        credentials.id_token, GoogleRequest(), flow.client_config['client_id']
+                    )
+                    
+                    user_info = {
+                        "email": id_info.get("email"),
+                        "name": id_info.get("name"),
+                        "picture": id_info.get("picture")
+                    }
+                    
+                    # 세션 저장
+                    st.session_state.user_info = user_info
+                    st.session_state.logged_in = True
+                    
+                    # 쿠키 저장 (30일 유지)
+                    user_key = "anime_user_session"
+                    cookie_manager.set(
+                        user_key, 
+                        user_info, 
+                        expires_at=datetime.now() + timedelta(days=30),
+                        key="save_user_cookie"
+                    )
+                    
+                    # 시청 목록 즉시 로드
+                    st.session_state.watched_list = load_watched_from_db(user_info["email"])
+                    
+                    # URL 파라미터 제거 및 새로고침
+                    st.query_params.clear()
+                    st.rerun()
+            except Exception as e:
+                st.error(f"로그인 처리 중 오류 발생: {e}")
         
-    # 3. 쿠키 기반 세션 복구 확인
+    # 4. 쿠키 기반 세션 복구 확인 (기존 로그인된 경우)
     user_key = "anime_user_session"
     
     if all_cookies is None:

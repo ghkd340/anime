@@ -175,45 +175,104 @@ def init_firebase():
 db = init_firebase()
 app_id = "k-anime-archive-v3"
 
-# --- DB 함수 (캐싱 적용) ---
-@st.cache_data(ttl=600) # 10분 동안 DB 조회 결과 캐싱
+# --- DB 함수 (캐싱 및 구조 최적화) ---
+@st.cache_data(ttl=600, show_spinner=False)
 def load_watched_from_db(user_email):
-    """DB에서 사용자의 시청 목록을 가져옵니다. user_email을 인자로 받아 캐시 효율을 높입니다."""
+    """
+    사용자 문서 1개만 읽어서 전체 목록을 가져옵니다. 
+    할당량 초과 에러 발생 시 안내 메시지를 표시하고 크래시를 방지합니다.
+    """
     if not db or not user_email: return {}
     try:
-        ref = db.collection("artifacts").document(app_id).collection("users").document(user_email).collection("watched")
-        # {ID: {"rating": r, "comment": c, "count": n}} 형식으로 반환
-        return {int(doc.id): {
-            "rating": doc.to_dict().get("rating", 5.0),
-            "comment": doc.to_dict().get("comment", ""),
-            "count": doc.to_dict().get("count", 1)
-        } for doc in ref.stream()}
+        user_ref = db.collection("artifacts").document(app_id).collection("users").document(user_email)
+        doc = user_ref.get()
+        
+        watched_data = {}
+        if doc.exists:
+            data_dict = doc.to_dict()
+            watched_data = data_dict.get("watched", {})
+            if data_dict.get("migrated"):
+                return {int(k): v for k, v in watched_data.items()}
+        
+        legacy_ref = user_ref.collection("watched")
+        legacy_check = list(legacy_ref.limit(1).stream())
+        
+        if legacy_check:
+            legacy_docs = list(legacy_ref.stream())
+            new_map = {ldoc.id: ldoc.to_dict() for ldoc in legacy_docs}
+            user_ref.set({"watched": new_map, "migrated": True}, merge=True)
+            for ldoc in legacy_docs:
+                ldoc.reference.delete()
+            watched_data = new_map
+        else:
+            user_ref.set({"migrated": True}, merge=True)
+            
+        return {int(k): v for k, v in watched_data.items()}
     except Exception as e:
-        st.error(f"데이터 로드 실패: {e}")
-        return {}
+        err_msg = str(e)
+        if "Quota exceeded" in err_msg or "ResourceExhausted" in err_msg or "429" in err_msg:
+            st.error("🚨 **데이터베이스 일일 사용 한도를 초과했습니다.**\n\nFirebase 무료 요금제의 일일 읽기 제한(50,000회)에 도달하여 데이터를 가져올 수 없습니다. **내일 오후 4~5시경**에 한도가 리셋되면 정상 이용이 가능합니다. 최적화가 완료되었으므로 리셋 후에는 다시 발생할 확률이 매우 낮습니다.")
+            return {} # 빈 목록 반환하여 크래시 방지
+        raise e
 
 def update_db(anime_id, action="add", rating=5.0, comment="", count=1):
-    """DB에 데이터를 저장하고, 데이터가 변경되었으므로 관련 캐시를 삭제합니다."""
+    """특정 작품 정보만 업데이트하거나 삭제합니다."""
     if not db or not st.session_state.get("logged_in"): return
     user_email = st.session_state.user_info.get("email")
-    ref = db.collection("artifacts").document(app_id).collection("users").document(user_email).collection("watched")
+    user_ref = db.collection("artifacts").document(app_id).collection("users").document(user_email)
     
     try:
         if action == "add":
-            ref.document(str(anime_id)).set({
-                "id": anime_id, 
-                "at": datetime.now(), 
-                "rating": rating,
-                "comment": comment,
-                "count": count
-            })
+            user_ref.set({
+                "watched": {
+                    str(anime_id): {
+                        "id": anime_id, 
+                        "at": datetime.now(), 
+                        "rating": rating,
+                        "comment": comment,
+                        "count": count
+                    }
+                }
+            }, merge=True)
         else:
-            ref.document(str(anime_id)).delete()
-        
-        # 데이터가 변경되었으므로 캐시를 비워서 다음 로드 때 최신 정보를 가져오게 함
+            user_ref.update({
+                f"watched.{anime_id}": firestore.DELETE_FIELD
+            })
         load_watched_from_db.clear()
     except Exception as e:
         st.error(f"DB 업데이트 실패: {e}")
+
+# --- 유틸리티 함수 (Module Level) ---
+@st.cache_data(ttl=86400)
+def get_watched_metadata(ids):
+    if not ids: return {}
+    url = 'https://graphql.anilist.co'
+    query = '''
+    query ($ids: [Int]) {
+      Page(page: 1, perPage: 50) {
+        media(id_in: $ids, type: ANIME) {
+          id
+          episodes
+          duration
+          genres
+        }
+      }
+    }
+    '''
+    all_meta = {}
+    for i in range(0, len(ids), 50):
+        chunk = ids[i:i+50]
+        try:
+            res = requests.post(url, json={'query': query, 'variables': {'ids': chunk}}, timeout=10)
+            data = res.json().get('data', {}).get('Page', {}).get('media', [])
+            for m in data:
+                all_meta[m['id']] = {
+                    'episodes': m.get('episodes') or 0,
+                    'duration': m.get('duration') or 0,
+                    'genres': m.get('genres', [])
+                }
+        except: pass
+    return all_meta
 
 # 3. 구글 OAuth 설정 함수
 def get_google_auth_flow():
@@ -271,31 +330,49 @@ def run_auth_shield():
     user_key = "anime_user_session"
     
     if all_cookies is None:
+        # 쿠키 매니저가 아직 로딩 중일 때는 아무것도 하지 않음
         return False
         
     if user_key in all_cookies:
         try:
             import base64
+            import urllib.parse
             raw_data = all_cookies[user_key]
             
-            # Base64 디코딩 및 파싱
+            # 1. URL 디코딩 (브라우저/라이브러리에 따라 인코딩된 경우 대비)
+            if isinstance(raw_data, str) and ("%" in raw_data or "+" in raw_data):
+                raw_data = urllib.parse.unquote(raw_data)
+            
+            # 2. 데이터 파싱 시도 (Base64 -> JSON -> dict 순서)
+            user_info = None
             try:
-                import urllib.parse
-                if isinstance(raw_data, str) and "%" in raw_data:
-                    raw_data = urllib.parse.unquote(raw_data)
+                # Base64 시도
                 decoded_str = base64.b64decode(raw_data).decode('utf-8')
                 user_info = json.loads(decoded_str)
             except:
-                user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                try:
+                    # 일반 JSON 시도
+                    user_info = json.loads(raw_data)
+                except:
+                    # 이미 딕셔너리인 경우
+                    if isinstance(raw_data, dict):
+                        user_info = raw_data
             
             if user_info and isinstance(user_info, dict) and "email" in user_info:
                 st.session_state.user_info = user_info
                 st.session_state.logged_in = True
                 # 쿠키로 복구 시 시청 목록도 함께 로드
                 if st.session_state.watched_list is None:
-                    st.session_state.watched_list = load_watched_from_db(user_info["email"])
+                    try:
+                        # 성공 시 데이터 로드
+                        st.session_state.watched_list = load_watched_from_db(user_info["email"])
+                    except Exception as e:
+                        # DB 에러(할당량 등) 발생 시 None으로 유지하여 다음 rerun에 재시도하도록 함
+                        st.session_state.watched_list = None
+                        st.warning(f"⚠️ 시청 목록을 불러오는 중 오류가 발생했습니다. (잠시 후 자동 재시도)")
                 st.rerun() 
         except Exception as e:
+            # 복구 실패 시 로그만 남기고 게스트 모드 유지
             pass
     return False
 
@@ -912,11 +989,23 @@ else:
             c1.link_button("상세", anime['siteUrl'], use_container_width=True)
             if st.session_state.logged_in:
                 if is_w:
-                    if c2.button("취소", key=f"un_{a_id}", use_container_width=True):
-                        if st.session_state.watched_list is not None:
-                            st.session_state.watched_list.pop(a_id, None)
-                        update_db(a_id, "remove")
-                        st.rerun()
+                    with c2.popover("수정", use_container_width=True):
+                        w_data = current_watched.get(a_id, {})
+                        u_score = st.slider("내 평점", 0.0, 5.0, float(w_data.get("rating", 5.0)), 0.1, key=f"score_{a_id}")
+                        u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"count_{a_id}")
+                        u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_{a_id}")
+                        if st.button("업데이트", key=f"save_{a_id}", use_container_width=True):
+                            if st.session_state.watched_list is None:
+                                st.session_state.watched_list = {}
+                            st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
+                            update_db(a_id, "add", u_score, u_comment, u_count)
+                            st.rerun()
+                        st.divider()
+                        if st.button("시청 기록 삭제", key=f"un_{a_id}", use_container_width=True):
+                            if st.session_state.watched_list is not None:
+                                st.session_state.watched_list.pop(a_id, None)
+                            update_db(a_id, "remove")
+                            st.rerun()
                 else:
                     with c2.popover("봤어요", use_container_width=True):
                         u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, key=f"score_{a_id}")
@@ -928,8 +1017,8 @@ else:
                             st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
                             update_db(a_id, "add", u_score, u_comment, u_count)
                             st.rerun()
-
             st.markdown('</div>', unsafe_allow_html=True)
+
             st.write("") 
 
     # 하단 네비게이션 로직 (수동 로딩)

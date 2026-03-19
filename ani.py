@@ -274,7 +274,23 @@ def sync_session():
             user_key = f"user_{app_id}"
             if user_key in cookies:
                 raw_data = cookies[user_key]
-                user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                
+                # URL 인코딩 및 따옴표 처리 대응 (배포 환경 보정)
+                if isinstance(raw_data, str):
+                    import urllib.parse
+                    try:
+                        # 1. URL 디코딩 시도
+                        unquoted = urllib.parse.unquote(raw_data)
+                        user_info = json.loads(unquoted)
+                    except:
+                        try:
+                            # 2. 원본 JSON 시도
+                            user_info = json.loads(raw_data)
+                        except:
+                            user_info = None
+                else:
+                    user_info = raw_data
+
                 if user_info and isinstance(user_info, dict):
                     st.session_state.user_info = user_info
                     st.session_state.logged_in = True
@@ -372,18 +388,35 @@ if "code" in q_params:
             u_email = result.get("email", "")
             u_name = result.get("name", "")
             
-            # 파이썬 레벨에서 먼저 파라미터 설정 (배포 환경 브라우저 연동 강화)
-            st.query_params["u_email"] = u_email
-            st.query_params["u_name"] = u_name
-            
+            # 쿠키 데이터 준비 (JS에서도 사용 가능하게)
+            cookie_data = json.dumps({
+                "name": result.get("name"),
+                "email": u_email,
+                "picture": result.get("picture")
+            })
+
+            # 파이썬 레벨에서도 시도
+            try:
+                cookie_manager.set(f"user_{app_id}", cookie_data, expires_at=datetime.now() + timedelta(days=30))
+            except: pass
+
             st.success("로그인 성공! 세션이 연결되었습니다.")
             
-            # 자바스크립트로 부모 창 리다이렉트 및 현재 창 닫기
+            # 자바스크립트 통합 처리: 쿠키 저장 + 부모 창 리다이렉트
+            # 배포 환경 iframe 보안 이슈 대응을 위해 JS로 직접 쿠키 주입 시도
             new_params = f"?u_email={u_email}&u_name={u_name}"
             st.components.v1.html(f"""
                 <script>
                     var topWindow = window.top;
                     var openerWindow = topWindow.opener;
+                    
+                    // 1. 직접 쿠키 저장 시도 (Lax)
+                    var expiry = new Date();
+                    expiry.setTime(expiry.getTime() + (30*24*60*60*1000));
+                    var cookieStr = "user_{app_id}=" + encodeURIComponent('{cookie_data}') + "; expires=" + expiry.toUTCString() + "; path=/; SameSite=Lax; Secure";
+                    document.cookie = cookieStr;
+
+                    // 2. 부모 창 리다이렉트
                     var targetUrl = topWindow.location.origin + topWindow.location.pathname + "{new_params}";
                     
                     if (openerWindow && openerWindow !== topWindow) {{

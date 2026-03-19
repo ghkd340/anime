@@ -255,28 +255,42 @@ def run_auth_shield():
         return True
         
     # 2. 쿠키 기반 세션 복구 확인 (로그인 전)
-    user_key = f"user_{app_id}"
+    # [수정] 새로운 쿠키 키 'anime_user_session' 사용
+    user_key = "anime_user_session"
     
     if all_cookies is None:
         st.stop() 
         
     if user_key in all_cookies and not st.session_state.get('logged_in'):
         try:
+            import base64
             raw_data = all_cookies[user_key]
-            import urllib.parse
-            if isinstance(raw_data, str) and "%22" in raw_data:
-                raw_data = urllib.parse.unquote(raw_data)
+            
+            # [수정] Base64 디코딩 로직 추가
+            try:
+                # URL 인코딩된 경우 먼저 디코딩
+                import urllib.parse
+                if isinstance(raw_data, str) and "%" in raw_data:
+                    raw_data = urllib.parse.unquote(raw_data)
                 
-            user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                # Base64 디코딩 시도
+                decoded_bytes = base64.b64decode(raw_data)
+                decoded_str = decoded_bytes.decode('utf-8')
+                user_info = json.loads(decoded_str)
+            except Exception as decode_err:
+                # 만약 Base64가 아니면 기존 JSON 방식 시도 (하위 호환성)
+                user_info = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
             
             if user_info and isinstance(user_info, dict):
                 st.session_state.user_info = user_info
                 st.session_state.logged_in = True
                 st.session_state.watched_list = load_watched_from_db()
-                st.sidebar.success("✅ 쿠키로 자동 로그인 성공!")
+                st.sidebar.success("✅ 세션 복구 성공! (자동 로그인)")
                 st.rerun() 
         except Exception as e:
             st.sidebar.error(f"⚠️ 세션 복구 에러: {e}")
+            # 에러 발생 시 쿠키 삭제 시도 (잘못된 데이터 방지)
+            # cookie_manager.delete(user_key)
         
     # 3. OAuth 콜백 처리
     if "code" in st.query_params and not st.session_state.logged_in:

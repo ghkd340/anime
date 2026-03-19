@@ -328,25 +328,48 @@ if "code" in q_params:
             st.session_state.user_info = result
             st.session_state.watched_list = load_watched_from_db()
             
-            # 쿠키 저장 (최소한의 정보만 저장하여 안정성 확보)
+            # 쿠키 저장 (SameSite=None; Secure 설정을 위해 JS 주입 병행)
             try:
+                cookie_name = f"user_{app_id}"
                 cookie_data = {
                     "name": result.get("name"),
                     "email": result.get("email"),
                     "picture": result.get("picture")
                 }
+                cookie_val = json.dumps(cookie_data)
+                
+                # 1. stx.CookieManager를 통한 기본 저장
                 cookie_manager.set(
-                    f"user_{app_id}", 
-                    json.dumps(cookie_data), 
+                    cookie_name, 
+                    cookie_val, 
                     expires_at=datetime.now() + timedelta(days=30)
                 )
-            except: pass
+                
+                # 2. [해결 시도 1 & 2] SameSite=None; Secure 직접 설정을 위한 JS 주입
+                # Streamlit Cloud 등 IFrame 환경에서의 차단을 방지합니다.
+                expires = (datetime.now() + timedelta(days=30)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                st.components.v1.html(f"""
+                    <script>
+                        const cName = "{cookie_name}";
+                        const cValue = encodeURIComponent(JSON.stringify({cookie_val}));
+                        document.cookie = cName + "=" + cValue + "; path=/; expires={expires}; SameSite=None; Secure";
+                        console.log("Cookie security headers applied via JS");
+                    </script>
+                """, height=0)
+                
+            except Exception as e:
+                st.error(f"쿠키 저장 중 오류: {e}")
             
             if state in oauth_storage: del oauth_storage[state]
             st.session_state.code_verifier = None
-            # st.query_params.clear()를 여기서 호출하지 않습니다.
-            # 스크립트가 끝까지 실행되어야 쿠키 저장 명령이 브라우저에 도달합니다.
-            st.success("로그인 성공! 이 창을 닫고 원래 창에서 새로고침 해주세요.")
+            
+            # [해결 시도 3] 컴포넌트 렌더링 타이밍 보장
+            # 즉시 리런하지 않고 사용자가 성공 메시지를 확인하게 하여 쿠키가 브라우저에 기록될 시간을 벌어줍니다.
+            st.success("✅ 로그인 성공! 이제 이 창을 닫고 원래 창에서 새로고침 해주세요.")
+            st.balloons()
+            
+            # 디버깅 정보 (선택사항)
+            # st.info("쿠키가 설정되었습니다. 30일 동안 로그인이 유지됩니다.")
         elif isinstance(result, Exception):
             if st.session_state.logged_in:
                 st.query_params.clear()
@@ -499,14 +522,22 @@ with st.sidebar:
                 st.caption("데이터가 없습니다.")
 
         if st.button("로그아웃"):
-            # --- 쿠키 삭제 ---
-            cookie_manager.delete(f"user_{app_id}")
-            # 상태 변경 (st.rerun 없이도 UI는 즉시 반영됨)
+            # --- 쿠키 삭제 (JS 병행으로 확실한 삭제 보장) ---
+            cookie_name = f"user_{app_id}"
+            cookie_manager.delete(cookie_name)
+            
+            st.components.v1.html(f"""
+                <script>
+                    document.cookie = "{cookie_name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure";
+                </script>
+            """, height=0)
+
+            # 상태 변경
             st.session_state.logged_in = False
             st.session_state.user_info = None
             st.session_state.watched_list = {}
-            # 여기서 멈추지 않고 끝까지 실행하여 쿠키 삭제를 보장합니다.
-            st.info("로그아웃 되었습니다.")
+            st.info("로그아웃 되었습니다. 잠시 후 새로고침 해주세요.")
+            st.rerun()
 
     st.divider()
     st.header("🔍 검색 및 필터")

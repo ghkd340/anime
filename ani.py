@@ -532,7 +532,7 @@ run_auth_shield()
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
     url = 'https://graphql.anilist.co'
     # relations는 상세 정보 로딩 시에만 필요하므로 메인 목록에서는 제외하여 속도 최적화
-    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day }"
+    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format"
     
     # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
@@ -1222,6 +1222,14 @@ else:
             else: st.markdown('<div style="height:1.5rem; margin-bottom:5px;"></div>', unsafe_allow_html=True)
 
             st.markdown(f"<div class='anime-title-box'>{anime['title']['native'] or anime['title']['romaji']}</div>", unsafe_allow_html=True)
+            
+            # 포맷 매핑
+            f_map = {
+                "TV": "TV", "TV_SHORT": "TV (Short)", "MOVIE": "영화", 
+                "SPECIAL": "특별편", "OVA": "OVA", "ONA": "ONA", "MUSIC": "뮤직"
+            }
+            a_format = f_map.get(anime.get('format'), anime.get('format') or "Unknown")
+            st.markdown(f"<div style='font-size: 0.75rem; color: #888; margin-top: -10px; margin-bottom: 5px;'>{a_format}</div>", unsafe_allow_html=True)
 
             s_map = {"WINTER": "1분기", "SPRING": "2분기", "SUMMER": "3분기", "FALL": "4분기"}
             a_year = anime.get('seasonYear') or "미정"

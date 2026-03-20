@@ -194,22 +194,24 @@ app_id = "k-anime-archive-v3"
 
 # --- DB 함수 (캐싱 및 구조 최적화) ---
 @st.cache_data(ttl=600, show_spinner=False)
-def load_watched_from_db(user_email):
+def load_user_data_from_db(user_email):
     """
-    사용자 문서 1개만 읽어서 전체 목록을 가져옵니다. 
+    사용자 문서 1개만 읽어서 전체 목록과 설정을 가져옵니다. 
     할당량 초과 에러 발생 시 안내 메시지를 표시하고 크래시를 방지합니다.
     """
-    if not db or not user_email: return {}
+    if not db or not user_email: return {}, {}
     try:
         user_ref = db.collection("artifacts").document(app_id).collection("users").document(user_email)
         doc = user_ref.get()
         
         watched_data = {}
+        preferences = {}
         if doc.exists:
             data_dict = doc.to_dict()
             watched_data = data_dict.get("watched", {})
+            preferences = data_dict.get("preferences", {})
             if data_dict.get("migrated"):
-                return {int(k): v for k, v in watched_data.items()}
+                return {int(k): v for k, v in watched_data.items()}, preferences
         
         legacy_ref = user_ref.collection("watched")
         legacy_check = list(legacy_ref.limit(1).stream())
@@ -224,13 +226,20 @@ def load_watched_from_db(user_email):
         else:
             user_ref.set({"migrated": True}, merge=True)
             
-        return {int(k): v for k, v in watched_data.items()}
+        return {int(k): v for k, v in watched_data.items()}, preferences
     except Exception as e:
         err_msg = str(e)
         if "Quota exceeded" in err_msg or "ResourceExhausted" in err_msg or "429" in err_msg:
             st.error("🚨 **데이터베이스 일일 사용 한도를 초과했습니다.**\n\nFirebase 무료 요금제의 일일 읽기 제한(50,000회)에 도달하여 데이터를 가져올 수 없습니다. **내일 오후 4~5시경**에 한도가 리셋되면 정상 이용이 가능합니다. 최적화가 완료되었으므로 리셋 후에는 다시 발생할 확률이 매우 낮습니다.")
-            return {} # 빈 목록 반환하여 크래시 방지
+            return {}, {} # 빈 목록 반환하여 크래시 방지
         raise e
+
+def sync_user_data_to_session(user_email):
+    """DB에서 사용자 데이터를 가져와 세션에 동기화합니다."""
+    watched, prefs = load_user_data_from_db(user_email)
+    st.session_state.watched_list = watched
+    if prefs and "time_unit" in prefs:
+        st.session_state.time_unit = prefs["time_unit"]
 
 def update_db(anime_id, action="add", rating=5.0, comment="", count=1):
     """백그라운드 쓰레드에서 DB를 업데이트하여 UI 차단을 방지합니다."""
@@ -261,7 +270,7 @@ def update_db(anime_id, action="add", rating=5.0, comment="", count=1):
     # 쓰레드 시작 (백그라운드 작업)
     threading.Thread(target=run_in_thread, daemon=True).start()
     # 캐시 클리어는 즉시 수행하여 다음 로드 시 반영되도록 함
-    load_watched_from_db.clear()
+    load_user_data_from_db.clear()
 
 def batch_update_db(data_dict):
     """대량의 데이터를 한 번에 업데이트합니다."""
@@ -285,7 +294,21 @@ def batch_update_db(data_dict):
         except Exception: pass
 
     threading.Thread(target=run_in_thread, daemon=True).start()
-    load_watched_from_db.clear()
+    load_user_data_from_db.clear()
+
+def update_user_setting(key, value):
+    """사용자 설정을 DB에 백그라운드에서 저장합니다."""
+    if not db or not st.session_state.get("logged_in"): return
+    user_email = st.session_state.user_info.get("email")
+    user_ref = db.collection("artifacts").document(app_id).collection("users").document(user_email)
+    
+    def run_in_thread():
+        try:
+            user_ref.set({"preferences": {key: value}}, merge=True)
+        except Exception: pass
+
+    threading.Thread(target=run_in_thread, daemon=True).start()
+    load_user_data_from_db.clear()
 
 # --- API 공통 요청 함수 (429 에러 대응 및 재시도 로직) ---
 def safe_anilist_request(query, variables, max_retries=3):
@@ -436,7 +459,7 @@ if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
 if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
 if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 if 'action_cnt' not in st.session_state: st.session_state.action_cnt = 0
-if 'time_unit' not in st.session_state: st.session_state.time_unit = "자동"
+if 'time_unit' not in st.session_state: st.session_state.time_unit = "시간"
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
@@ -503,8 +526,8 @@ def run_auth_shield():
                         </script>
                     """, height=0)
                     
-                    # 시청 목록 즉시 로드
-                    st.session_state.watched_list = load_watched_from_db(user_info["email"])
+                    # 시청 목록 및 설정 즉시 로드
+                    sync_user_data_to_session(user_info["email"])
                     
                     # 쿠키가 저장될 시간을 아주 잠시 기다린 후 새로고침
                     import time
@@ -553,7 +576,7 @@ def run_auth_shield():
                 if st.session_state.watched_list is None:
                     try:
                         # 성공 시 데이터 로드
-                        st.session_state.watched_list = load_watched_from_db(user_info["email"])
+                        sync_user_data_to_session(user_info["email"])
                     except Exception as e:
                         # DB 에러(할당량 등) 발생 시 None으로 유지하여 다음 rerun에 재시도하도록 함
                         st.session_state.watched_list = None
@@ -801,26 +824,19 @@ with st.sidebar:
             st.markdown('<div style="font-size: 0.9rem; font-weight: bold; margin-top: 5px;">📊 나의 아카이브 현황</div>', unsafe_allow_html=True)
         with col_opt:
             with st.popover("⚙️", help="시청 시간 단위 변경"):
-                t_unit = st.selectbox("시간 단위", ["자동", "일", "시간", "분", "초"], 
-                                    index=["자동", "일", "시간", "분", "초"].index(st.session_state.time_unit), 
+                t_unit = st.selectbox("시간 단위", ["일", "시간", "분", "초"], 
+                                    index=["일", "시간", "분", "초"].index(st.session_state.time_unit), 
                                     key="time_unit_selector")
-                st.session_state.time_unit = t_unit
+                if t_unit != st.session_state.time_unit:
+                    st.session_state.time_unit = t_unit
+                    update_user_setting("time_unit", t_unit)
 
         # 2. 시간 포맷팅 계산
-        if st.session_state.time_unit == "자동":
-            if total_minutes >= 1440:
-                days = total_minutes // 1440
-                hours = (total_minutes % 1440) // 60
-                total_time_str = f"{days}일 {hours}시간"
-            elif total_minutes >= 60:
-                hours = total_minutes // 60
-                mins = total_minutes % 60
-                total_time_str = f"{hours}시간 {mins}분"
-            else: total_time_str = f"{total_minutes}분"
-        elif st.session_state.time_unit == "일": total_time_str = f"{total_minutes / 1440:.1f}일"
+        if st.session_state.time_unit == "일": total_time_str = f"{total_minutes / 1440:.1f}일"
         elif st.session_state.time_unit == "시간": total_time_str = f"{total_minutes / 60:.1f}시간"
         elif st.session_state.time_unit == "분": total_time_str = f"{total_minutes:,}분"
         elif st.session_state.time_unit == "초": total_time_str = f"{total_minutes * 60:,}초"
+        else: total_time_str = f"{total_minutes / 60:.1f}시간" # Fallback to hours
 
         # 3. 통합 통계 카드 (단일 마크다운으로 구성하여 절대 깨지지 않음)
         st.markdown(f"""
@@ -942,15 +958,11 @@ with st.sidebar:
             if st.button("🔄 동기화", use_container_width=True, help="서버에서 시청 기록을 다시 불러옵니다."):
                 with st.spinner("불러오는 중..."):
                     try:
-                        load_watched_from_db.clear()
+                        load_user_data_from_db.clear()
                         user_email = st.session_state.user_info.get("email")
-                        synced_data = load_watched_from_db(user_email)
-                        if synced_data:
-                            st.session_state.watched_list = synced_data
-                            st.toast(f"✅ {len(synced_data)}개의 데이터 동기화 완료!")
-                            st.rerun()
-                        else:
-                            st.warning("불러올 데이터가 없거나 실패했습니다.")
+                        sync_user_data_to_session(user_email)
+                        st.toast(f"✅ 동기화 완료!")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"동기화 오류: {str(e)}")
         with sc2:
@@ -1018,7 +1030,7 @@ with st.sidebar:
                     const container = input.closest('div[data-testid="stSelectbox"], div[data-testid="stMultiSelect"]');
                     if (container) {
                         const label = container.querySelector('label');
-                        if (label && ["년도", "분기", "포함 장르", "제외 장르", "시청 여부"].some(text => label.textContent.trim() === text)) {
+                        if (label && ["년도", "분기", "포함 장르", "제외 장르", "시청 여부", "시간 단위"].some(text => label.textContent.trim() === text)) {
                             // inputmode="none"은 모바일 키보드를 띄우지 않게 함
                             input.setAttribute('inputmode', 'none');
                             // readonly는 텍스트 입력을 막고 커서(I-beam)가 생기는 것을 방지함
@@ -1184,40 +1196,47 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
     # API용 정렬 값 결정
     api_sort = sort_map.get(st.session_state.sort_by, "POPULARITY_DESC")
     
-    # "내 평점순" 정렬이면서 "본 작품만"인 경우 클라이언트 사이드 페이징 적용
-    # 단, 다른 필터(검색, 년도, 분기, 장르)가 활성화된 경우 API에서 필터링을 수행해야 하므로 제외
-    has_active_filters = any([new_search, s_year, s_season, s_genres, s_ex_genres])
-    is_client_side_paging = (st.session_state.sort_by == "내 평점순" and only_w and not has_active_filters)
+    # "내 평점순" 정렬 로직 (전체 데이터를 평점순으로 정렬 후 페이징)
+    is_my_rating_sort = (st.session_state.sort_by == "내 평점순" and only_w)
     
-    if is_client_side_paging and target_ids:
-        # 이미 정렬된 target_ids에서 현재 페이지에 해당하는 24개만 추출
+    if is_my_rating_sort:
+        # 1. 정렬된 ID 리스트를 기준으로 현재 페이지에 필요한 ID들만 추출
         per_page = 24
         start_idx = (st.session_state.page - 1) * per_page
         end_idx = start_idx + per_page
         
-        # 전체 목록이 500개로 제한되어 있으므로 그 내에서 페이징
+        # target_ids는 이미 위에서 평점순으로 정렬됨
         paged_ids = target_ids[start_idx:end_idx]
         
-        # API에는 이 24개만 요청 (page는 1로 고정)
-        data = fetch_anime(
-            1, 
-            "POPULARITY_DESC", 
-            s_year, s_season, s_genres, s_ex_genres,
-            new_search if new_search else None,
-            ids=paged_ids if paged_ids else [0],
-            exclude_ids=exclude_ids,
-            include_adult=s_adult
-        )
-        
-        if data:
-            new_items = data['media']
-            existing_ids = {m['id'] for m in st.session_state.all_media}
-            for item in new_items:
-                if item['id'] not in existing_ids:
-                    st.session_state.all_media.append(item)
-            # 페이징 정보 수동 계산
-            st.session_state.has_next = end_idx < len(target_ids)
-            st.session_state.total_pages = (len(target_ids) + per_page - 1) // per_page
+        if paged_ids:
+            # 2. 해당 ID들에 대한 정보만 API에서 가져옴
+            data = fetch_anime(
+                1, "POPULARITY_DESC", # 순서는 paged_ids로 강제할 것임
+                s_year, s_season, s_genres, s_ex_genres,
+                new_search if new_search else None,
+                ids=paged_ids,
+                exclude_ids=exclude_ids,
+                include_adult=s_adult
+            )
+            
+            if data and data['media']:
+                new_items = data['media']
+                # 3. API는 순서를 보장하지 않으므로 paged_ids 순서대로 다시 재배치 (핵심!)
+                media_dict = {m['id']: m for m in new_items}
+                sorted_new_items = []
+                for aid in paged_ids:
+                    if aid in media_dict:
+                        sorted_new_items.append(media_dict[aid])
+                
+                # 4. 세션 목록에 추가 (중복 방지)
+                existing_ids = {m['id'] for m in st.session_state.all_media}
+                for item in sorted_new_items:
+                    if item['id'] not in existing_ids:
+                        st.session_state.all_media.append(item)
+                
+                # 페이징 정보 갱신
+                st.session_state.has_next = end_idx < len(target_ids)
+                st.session_state.total_pages = (len(target_ids) + per_page - 1) // per_page
     else:
         # 일반적인 API 페이징 처리 (루프를 통해 부족한 수량 채움)
         if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"

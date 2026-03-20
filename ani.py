@@ -1170,9 +1170,10 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
     target_ids = None
     exclude_ids = None
     
-    # 1. 시청한 작품 필터링 및 정렬용 ID 목록 생성
+    # 1. 시청한 작품 필터링용 ID 목록 생성
     current_watched = st.session_state.watched_list or {}
     if only_w:
+        # 평점 필터링만 적용된 전체 ID 목록 (개수 제한 제거)
         target_ids = [aid for aid, info in current_watched.items() if info.get('rating', 0) >= s_rating]
         
         # "내 평점순"인 경우 ID 목록 자체를 평점순(1순위) + 시청 횟수순(2순위)으로 미리 정렬
@@ -1182,16 +1183,12 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                 current_watched[aid].get('count', 1)
             ), reverse=True)
             
-        if not target_ids: 
-            target_ids = [0]
-        else:
-            # AniList id_in limit (일반적으로 500개)
-            target_ids = target_ids[:500]
+        if not target_ids: target_ids = [0]
     
     if only_not_w:
         exclude_ids = list(current_watched.keys())
         if exclude_ids:
-            exclude_ids = exclude_ids[:500]
+            exclude_ids = exclude_ids[:500] # API 제한 준수
 
     # API용 정렬 값 결정
     api_sort = sort_map.get(st.session_state.sort_by, "POPULARITY_DESC")
@@ -1202,24 +1199,29 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
     
     if is_my_rating_sort:
         if has_active_filters:
-            # 필터가 있는 경우: 필터에 맞는 모든 작품을 가져와서 평점순 정렬 (최대 500개)
+            # 필터가 있는 경우: API 필터로 모든 작품을 가져온 뒤 시청 기록만 남김 (누락 방지 핵심 로직)
             if not st.session_state.all_media:
                 all_fetched = []
                 temp_api_page = 1
                 with st.spinner("조건에 맞는 시청 기록 찾는 중..."):
                     while True:
+                        # id_in을 쓰지 않고 필터로만 검색
                         data = fetch_anime(
                             temp_api_page, "POPULARITY_DESC", 
                             s_year, s_season, s_genres, s_ex_genres,
-                            new_search, ids=target_ids, exclude_ids=exclude_ids,
+                            new_search, ids=None, exclude_ids=exclude_ids,
                             include_adult=s_adult, per_page=50
                         )
                         if not data or not data['media']: break
-                        all_fetched.extend(data['media'])
+                        
+                        # 가져온 데이터 중 내가 본 것만 필터링
+                        watched_only = [m for m in data['media'] if m['id'] in current_watched and current_watched[m['id']].get('rating', 0) >= s_rating]
+                        all_fetched.extend(watched_only)
+                        
                         if not data['pageInfo']['hasNextPage'] or len(all_fetched) >= 500: break
                         temp_api_page += 1
                 
-                # 평점순 정렬 (평점 -> 시청 횟수 순)
+                # 평점순 최종 정렬
                 all_fetched.sort(key=lambda x: (
                     current_watched.get(x['id'], {}).get('rating', 0),
                     current_watched.get(x['id'], {}).get('count', 1)
@@ -1229,14 +1231,15 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                 st.session_state.has_next = False
                 st.session_state.total_pages = 1
         else:
-            # 필터가 없는 경우: 기존의 효율적인 ID 기반 페이징 로직 사용
+            # 필터가 없는 경우: 기존의 ID 기반 페이징 (ID 개수가 많을 수 있으므로 안전하게 처리)
             per_page = 24
             start_idx = (st.session_state.page - 1) * per_page
             end_idx = start_idx + per_page
+            
+            # AniList 500개 제한 대응: 현재 페이지에 필요한 24개만 요청하므로 안전함
             paged_ids = target_ids[start_idx:end_idx]
             
             if paged_ids:
-                # 필터가 없으므로 API 정렬은 무관, paged_ids 순서 유지가 중요
                 data = fetch_anime(1, "POPULARITY_DESC", None, None, None, None, None, ids=paged_ids, per_page=24)
                 if data and data['media']:
                     media_dict = {m['id']: m for m in data['media']}
@@ -1252,6 +1255,50 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                     st.session_state.has_next = end_idx < len(target_ids)
                     st.session_state.total_pages = (len(target_ids) + per_page - 1) // per_page
     else:
+        # 일반적인 API 페이징 처리
+        if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"
+        
+        attempts = 0
+        while st.session_state.has_next and len(st.session_state.all_media) < st.session_state.page * 24 and attempts < 5:
+            attempts += 1
+            fetch_size = 50 if (only_w or only_not_w) else 24
+            
+            # 필터가 있는 "본 작품만"은 id_in을 쓰지 않고 필터로 검색 후 클라이언트에서 거름
+            api_ids = None if (only_w and has_active_filters) else target_ids
+            
+            data = fetch_anime(
+                st.session_state.api_page, 
+                api_sort, 
+                s_year, s_season, s_genres, s_ex_genres,
+                new_search,
+                ids=api_ids,
+                exclude_ids=exclude_ids,
+                include_adult=s_adult,
+                per_page=fetch_size
+            )
+
+            if data:
+                new_items = data['media']
+                
+                # 시청 여부 로컬 필터링
+                if only_w and has_active_filters:
+                    new_items = [m for m in new_items if m['id'] in current_watched and current_watched[m['id']].get('rating', 0) >= s_rating]
+                elif only_not_w:
+                    new_items = [m for m in new_items if m['id'] not in current_watched]
+                
+                existing_ids = {m['id'] for m in st.session_state.all_media}
+                added_count = 0
+                for item in new_items:
+                    if item['id'] not in existing_ids:
+                        st.session_state.all_media.append(item)
+                        added_count += 1
+                
+                st.session_state.has_next = data['pageInfo']['hasNextPage']
+                st.session_state.api_page += 1
+                
+                if added_count == 0 and st.session_state.has_next: continue
+                else: break
+            else: break
         # 일반적인 API 페이징 처리 (루프를 통해 부족한 수량 채움)
         if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"
         

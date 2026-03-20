@@ -290,7 +290,7 @@ def batch_update_db(data_dict):
 # --- 유틸리티 함수 (Module Level) ---
 @st.cache_data(ttl=86400)
 def get_watched_metadata(ids):
-    """AniList ID 목록을 받아 제목, 에피소드, 시간, 장르 정보를 가져옵니다."""
+    """AniList ID 목록을 받아 제목, 에피소드, 시간, 장르, 관계 정보를 가져옵니다."""
     if not ids: return {}
     # ID를 모두 정수로 변환 (데이터 타입 불일치 방지)
     clean_ids = []
@@ -308,6 +308,15 @@ def get_watched_metadata(ids):
           episodes
           duration
           genres
+          relations {
+            edges {
+              relationType(version: 2)
+              node {
+                id
+                type
+              }
+            }
+          }
         }
       }
     }
@@ -325,7 +334,8 @@ def get_watched_metadata(ids):
                     'title': m.get('title', {}),
                     'episodes': m.get('episodes') or 0,
                     'duration': m.get('duration') or 0,
-                    'genres': m.get('genres', [])
+                    'genres': m.get('genres', []),
+                    'relations': m.get('relations', {}).get('edges', [])
                 }
         except Exception as e:
             pass
@@ -636,12 +646,44 @@ with st.sidebar:
             avg_score = sum(v.get('rating', 0) for v in current_watched.values()) / watched_count
             
             # 총 시청 시간 및 장르 통계 계산 (상단에 정의된 통합 get_watched_metadata 호출)
-            watched_ids = list(current_watched.keys())
+            watched_ids = [int(aid) for aid in current_watched.keys()]
             meta_map = get_watched_metadata(watched_ids)
             
             total_minutes = 0
             genre_stats = {} # {장르: [합계평점, 개수]}
             
+            # --- 시리즈 그룹화 로직 ---
+            parent = {aid: aid for aid in watched_ids}
+            def find(i):
+                if parent[i] == i: return i
+                parent[i] = find(parent[i])
+                return parent[i]
+            def union(i, j):
+                root_i = find(i); root_j = find(j)
+                if root_i != root_j: parent[root_i] = root_j
+
+            related_to_watched = {}
+            valid_rel_types = ['PREQUEL', 'SEQUEL', 'PARENT','SUMMARY']
+            
+            for aid in watched_ids:
+                meta = meta_map.get(aid)
+                if not meta: continue
+                if aid not in related_to_watched: related_to_watched[aid] = set()
+                related_to_watched[aid].add(aid)
+                for edge in meta.get('relations', []):
+                    rel_id = edge['node']['id']
+                    if edge['relationType'] in valid_rel_types:
+                        if rel_id not in related_to_watched: related_to_watched[rel_id] = set()
+                        related_to_watched[rel_id].add(aid)
+            
+            for rel_id, aids in related_to_watched.items():
+                aids_list = list(aids)
+                for i in range(len(aids_list) - 1):
+                    union(aids_list[i], aids_list[i+1])
+            
+            series_count = len(set(find(aid) for aid in watched_ids))
+            # ------------------------
+
             # 한국어 장르 맵핑 (표시용)
             ko_genre_map = {
                 "Action": "액션", "Adventure": "모험", "Comedy": "코미디", "Drama": "드라마", "Ecchi": "에치",
@@ -679,14 +721,20 @@ with st.sidebar:
         st.markdown(f"""
         <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(76, 175, 80, 0.2); margin: 15px 0;">
             <div style="font-size: 0.8rem; color: var(--secondary-text-color); margin-bottom: 5px;">나의 아카이브 현황</div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-around; align-items: center; margin-bottom: 15px; text-align: center;">
                 <div>
-                    <div style="font-size: 1.5rem; font-weight: bold; color: #4CAF50;">{watched_count}</div>
-                    <div style="font-size: 0.7rem; color: var(--secondary-text-color);">시청한 작품</div>
+                    <div style="font-size: 1.2rem; font-weight: bold; color: #4CAF50;">{watched_count}</div>
+                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청한 작품</div>
                 </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 1.5rem; font-weight: bold; color: #f39c12;">{avg_score:.1f}</div>
-                    <div style="font-size: 0.7rem; color: var(--secondary-text-color);">평균 평점</div>
+                <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 30px;"></div>
+                <div>
+                    <div style="font-size: 1.2rem; font-weight: bold; color: #2E7D32;">{series_count}</div>
+                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청한 시리즈</div>
+                </div>
+                <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 30px;"></div>
+                <div>
+                    <div style="font-size: 1.2rem; font-weight: bold; color: #f39c12;">{avg_score:.1f}</div>
+                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">평균 평점</div>
                 </div>
             </div>
             <div style="border-top: 1px dashed rgba(76, 175, 80, 0.2); padding-top: 10px;">

@@ -288,58 +288,70 @@ def batch_update_db(data_dict):
     load_watched_from_db.clear()
 
 # --- 유틸리티 함수 (Module Level) ---
-@st.cache_data(ttl=86400)
 def get_watched_metadata(ids):
-    """AniList ID 목록을 받아 제목, 에피소드, 시간, 장르, 관계 정보를 가져옵니다."""
+    """AniList ID 목록을 받아 정보를 가져옵니다. 이미 로드된 데이터는 캐시를 사용하고 미보유분만 병렬로 가져옵니다."""
     if not ids: return {}
-    # ID를 모두 정수로 변환 (데이터 타입 불일치 방지)
-    clean_ids = []
-    for x in ids:
-        try: clean_ids.append(int(x))
-        except: continue
-        
-    url = 'https://graphql.anilist.co'
-    query = '''
-    query ($ids: [Int]) {
-      Page(page: 1, perPage: 50) {
-        media(id_in: $ids, type: ANIME) {
-          id
-          title { native romaji }
-          episodes
-          duration
-          genres
-          relations {
-            edges {
-              relationType(version: 2)
-              node {
-                id
-                type
+    
+    # 1. 세션 저장소 초기화
+    if "metadata_storage" not in st.session_state:
+        st.session_state.metadata_storage = {}
+    
+    clean_ids = list(set(int(x) for x in ids))
+    
+    # 2. 이미 가지고 있는 데이터와 새로 가져와야 할 데이터 구분
+    missing_ids = [i for i in clean_ids if i not in st.session_state.metadata_storage]
+    
+    if missing_ids:
+        url = 'https://graphql.anilist.co'
+        query = '''
+        query ($ids: [Int]) {
+          Page(page: 1, perPage: 50) {
+            media(id_in: $ids, type: ANIME) {
+              id
+              title { native romaji }
+              episodes
+              duration
+              genres
+              relations {
+                edges {
+                  relationType(version: 2)
+                  node {
+                    id
+                    type
+                  }
+                }
               }
             }
           }
         }
-      }
-    }
-    '''
-    all_meta = {}
-    # 50개씩 청크로 나누어 요청
-    for i in range(0, len(clean_ids), 50):
-        chunk = clean_ids[i:i+50]
-        try:
-            res = requests.post(url, json={'query': query, 'variables': {'ids': chunk}}, timeout=15)
-            res_json = res.json()
-            data = res_json.get('data', {}).get('Page', {}).get('media', [])
-            for m in data:
-                all_meta[int(m['id'])] = {
-                    'title': m.get('title', {}),
-                    'episodes': m.get('episodes') or 0,
-                    'duration': m.get('duration') or 0,
-                    'genres': m.get('genres', []),
-                    'relations': m.get('relations', {}).get('edges', [])
-                }
-        except Exception as e:
-            pass
-    return all_meta
+        '''
+        
+        def fetch_chunk(chunk):
+            chunk_data = {}
+            try:
+                res = requests.post(url, json={'query': query, 'variables': {'ids': chunk}}, timeout=15)
+                res_json = res.json()
+                data = res_json.get('data', {}).get('Page', {}).get('media', [])
+                for m in data:
+                    chunk_data[int(m['id'])] = {
+                        'title': m.get('title', {}),
+                        'episodes': m.get('episodes') or 0,
+                        'duration': m.get('duration') or 0,
+                        'genres': m.get('genres', []),
+                        'relations': m.get('relations', {}).get('edges', [])
+                    }
+            except: pass
+            return chunk_data
+
+        # 50개씩 병렬 요청 (미보유 데이터만)
+        chunks = [missing_ids[i:i+50] for i in range(0, len(missing_ids), 50)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_chunk = {executor.submit(fetch_chunk, chunk): chunk for chunk in chunks}
+            for future in concurrent.futures.as_completed(future_to_chunk):
+                st.session_state.metadata_storage.update(future.result())
+            
+    # 3. 요청받은 ID들에 해당하는 데이터만 모아서 반환
+    return {i: st.session_state.metadata_storage[i] for i in clean_ids if i in st.session_state.metadata_storage}
 
 # 3. 구글 OAuth 설정 함수
 def get_google_auth_flow():
@@ -519,7 +531,8 @@ run_auth_shield()
 @st.cache_data(ttl=3600)
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
     url = 'https://graphql.anilist.co'
-    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site } relations { edges { relationType(version: 2) node { id title { native romaji } siteUrl coverImage { medium } type } } }"
+    # relations는 상세 정보 로딩 시에만 필요하므로 메인 목록에서는 제외하여 속도 최적화
+    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site }"
     
     # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
@@ -635,88 +648,110 @@ with st.sidebar:
         st.success(f"**{st.session_state.user_info.get('name')}**님")
         
         
-        # --- 시청 통계 섹션 ---
-        # watched_list가 None인 경우 빈 딕셔너리로 취급
+        # --- 시청 통계 섹션 (최적화: 변경 시에만 재계산) ---
         current_watched = st.session_state.watched_list or {}
         watched_count = len(current_watched)
-        avg_score = 0
-        total_time_str = "0분"
         
-        if watched_count > 0:
-            avg_score = sum(v.get('rating', 0) for v in current_watched.values()) / watched_count
+        # 캐시 초기화 확인
+        if "stats_cache" not in st.session_state:
+            st.session_state.stats_cache = {"hash": None, "data": None}
             
-            # 총 시청 시간 및 장르 통계 계산 (상단에 정의된 통합 get_watched_metadata 호출)
-            watched_ids = [int(aid) for aid in current_watched.keys()]
-            meta_map = get_watched_metadata(watched_ids)
-            
-            total_minutes = 0
-            genre_stats = {} # {장르: [합계평점, 개수]}
-            
-            # --- 시리즈 그룹화 로직 ---
-            parent = {aid: aid for aid in watched_ids}
-            def find(i):
-                if parent[i] == i: return i
-                parent[i] = find(parent[i])
-                return parent[i]
-            def union(i, j):
-                root_i = find(i); root_j = find(j)
-                if root_i != root_j: parent[root_i] = root_j
+        # 현재 시청 목록의 상태를 나타내는 해시 생성 (ID 목록 + 개수)
+        current_hash = hash(frozenset(current_watched.keys())) + watched_count
+        
+        if st.session_state.stats_cache["hash"] != current_hash and watched_count > 0:
+            with st.spinner("통계 분석 중..."):
+                avg_score = sum(v.get('rating', 0) for v in current_watched.values()) / watched_count
+                watched_ids = [int(aid) for aid in current_watched.keys()]
+                meta_map = get_watched_metadata(watched_ids)
+                
+                total_minutes = 0
+                genre_stats = {} 
+                
+                # 시리즈 그룹화 (DSU)
+                parent = {aid: aid for aid in watched_ids}
+                def find(i):
+                    if parent[i] == i: return i
+                    parent[i] = find(parent[i])
+                    return parent[i]
+                def union(i, j):
+                    root_i = find(i); root_j = find(j)
+                    if root_i != root_j: parent[root_i] = root_j
 
-            related_to_watched = {}
-            valid_rel_types = ['PREQUEL', 'SEQUEL', 'PARENT','SUMMARY']
-            
-            for aid in watched_ids:
-                meta = meta_map.get(aid)
-                if not meta: continue
-                if aid not in related_to_watched: related_to_watched[aid] = set()
-                related_to_watched[aid].add(aid)
-                for edge in meta.get('relations', []):
-                    rel_id = edge['node']['id']
-                    if edge['relationType'] in valid_rel_types:
-                        if rel_id not in related_to_watched: related_to_watched[rel_id] = set()
-                        related_to_watched[rel_id].add(aid)
-            
-            for rel_id, aids in related_to_watched.items():
-                aids_list = list(aids)
-                for i in range(len(aids_list) - 1):
-                    union(aids_list[i], aids_list[i+1])
-            
-            series_count = len(set(find(aid) for aid in watched_ids))
-            # ------------------------
+                related_to_watched = {}
+                valid_rel_types = ['PREQUEL', 'SEQUEL', 'PARENT','SUMMARY']
+                
+                for aid in watched_ids:
+                    meta = meta_map.get(aid)
+                    if not meta: continue
+                    if aid not in related_to_watched: related_to_watched[aid] = set()
+                    related_to_watched[aid].add(aid)
+                    for edge in meta.get('relations', []):
+                        rel_id = edge['node']['id']
+                        if edge['relationType'] in valid_rel_types:
+                            if rel_id not in related_to_watched: related_to_watched[rel_id] = set()
+                            related_to_watched[rel_id].add(aid)
+                
+                for rel_id, aids in related_to_watched.items():
+                    aids_list = list(aids)
+                    for i in range(len(aids_list) - 1):
+                        union(aids_list[i], aids_list[i+1])
+                
+                series_count = len(set(find(aid) for aid in watched_ids))
 
-            # 한국어 장르 맵핑 (표시용)
-            ko_genre_map = {
-                "Action": "액션", "Adventure": "모험", "Comedy": "코미디", "Drama": "드라마", "Ecchi": "에치",
-                "Fantasy": "판타지", "Horror": "공포", "Mahou Shoujo": "마법소녀", "Mecha": "메카", 
-                "Music": "음악", "Mystery": "미스터리", "Psychological": "심리", "Romance": "로맨스", 
-                "Sci-Fi": "SF", "Slice of Life": "일상", "Sports": "스포츠", "Supernatural": "초자연", "Thriller": "스릴러"
-            }
+                ko_genre_map = {
+                    "Action": "액션", "Adventure": "모험", "Comedy": "코미디", "Drama": "드라마", "Ecchi": "에치",
+                    "Fantasy": "판타지", "Horror": "공포", "Mahou Shoujo": "마법소녀", "Mecha": "메카", 
+                    "Music": "음악", "Mystery": "미스터리", "Psychological": "심리", "Romance": "로맨스", 
+                    "Sci-Fi": "SF", "Slice of Life": "일상", "Sports": "스포츠", "Supernatural": "초자연", "Thriller": "스릴러"
+                }
 
-            for aid, info in current_watched.items():
-                meta = meta_map.get(aid)
-                rating = info.get('rating', 0)
-                if meta:
-                    count = info.get('count', 1)
-                    total_minutes += meta['episodes'] * meta['duration'] * count
-                    for g in meta['genres']:
-                        ko_g = ko_genre_map.get(g, g)
-                        if ko_g not in genre_stats: genre_stats[ko_g] = [0, 0]
-                        genre_stats[ko_g][0] += rating
-                        genre_stats[ko_g][1] += 1
-            
-            # 장르 통계 정렬 (작품 수 내림차순)
-            sorted_genres = sorted(genre_stats.items(), key=lambda x: x[1][1], reverse=True)
-            
-            if total_minutes >= 1440:
-                days = total_minutes // 1440
-                hours = (total_minutes % 1440) // 60
-                total_time_str = f"{days}일 {hours}시간"
-            elif total_minutes >= 60:
-                hours = total_minutes // 60
-                mins = total_minutes % 60
-                total_time_str = f"{hours}시간 {mins}분"
-            else:
-                total_time_str = f"{total_minutes}분"
+                for aid, info in current_watched.items():
+                    meta = meta_map.get(aid)
+                    rating = info.get('rating', 0)
+                    if meta:
+                        count = info.get('count', 1)
+                        total_minutes += meta['episodes'] * meta['duration'] * count
+                        for g in meta['genres']:
+                            ko_g = ko_genre_map.get(g, g)
+                            if ko_g not in genre_stats: genre_stats[ko_g] = [0, 0]
+                            genre_stats[ko_g][0] += rating
+                            genre_stats[ko_g][1] += 1
+                
+                sorted_genres = sorted(genre_stats.items(), key=lambda x: x[1][1], reverse=True)
+                
+                # 시간 포맷팅
+                if total_minutes >= 1440:
+                    days = total_minutes // 1440
+                    hours = (total_minutes % 1440) // 60
+                    t_str = f"{days}일 {hours}시간"
+                elif total_minutes >= 60:
+                    hours = total_minutes // 60
+                    mins = total_minutes % 60
+                    t_str = f"{hours}시간 {mins}분"
+                else:
+                    t_str = f"{total_minutes}분"
+                    
+                # 결과 캐싱
+                st.session_state.stats_cache = {
+                    "hash": current_hash,
+                    "data": {
+                        "avg_score": avg_score,
+                        "series_count": series_count,
+                        "total_time_str": t_str,
+                        "sorted_genres": sorted_genres
+                    }
+                }
+
+        # 캐시된 데이터 사용
+        stats = st.session_state.stats_cache["data"] or {
+            "avg_score": 0, "series_count": 0, "total_time_str": "0분", "sorted_genres": []
+        }
+        avg_score = stats["avg_score"]
+        series_count = stats["series_count"]
+        total_time_str = stats["total_time_str"]
+        sorted_genres = stats["sorted_genres"]
+
         
         st.markdown(f"""
         <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(76, 175, 80, 0.2); margin: 15px 0;">

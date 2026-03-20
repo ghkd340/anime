@@ -672,7 +672,7 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
                     "lastPage": max(d_normal.get('pageInfo', {}).get('lastPage', 1), d_adult.get('pageInfo', {}).get('lastPage', 1)),
                     "hasNextPage": d_normal.get('pageInfo', {}).get('hasNextPage', False) or d_adult.get('pageInfo', {}).get('hasNextPage', False)
                 },
-                "media": combined_media[:24]
+                "media": combined_media[:per_page]
             }
     except Exception as e:
         st.error(f"Fetch Error: {e}")
@@ -1198,45 +1198,59 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
     
     # "내 평점순" 정렬 로직 (전체 데이터를 평점순으로 정렬 후 페이징)
     is_my_rating_sort = (st.session_state.sort_by == "내 평점순" and only_w)
+    has_active_filters = any([new_search, s_year, s_season, s_genres, s_ex_genres, s_rating > 0])
     
     if is_my_rating_sort:
-        # 1. 정렬된 ID 리스트를 기준으로 현재 페이지에 필요한 ID들만 추출
-        per_page = 24
-        start_idx = (st.session_state.page - 1) * per_page
-        end_idx = start_idx + per_page
-        
-        # target_ids는 이미 위에서 평점순으로 정렬됨
-        paged_ids = target_ids[start_idx:end_idx]
-        
-        if paged_ids:
-            # 2. 해당 ID들에 대한 정보만 API에서 가져옴
-            data = fetch_anime(
-                1, "POPULARITY_DESC", # 순서는 paged_ids로 강제할 것임
-                s_year, s_season, s_genres, s_ex_genres,
-                new_search if new_search else None,
-                ids=paged_ids,
-                exclude_ids=exclude_ids,
-                include_adult=s_adult
-            )
+        if has_active_filters:
+            # 필터가 있는 경우: 필터에 맞는 모든 작품을 가져와서 평점순 정렬 (최대 500개)
+            if not st.session_state.all_media:
+                all_fetched = []
+                temp_api_page = 1
+                with st.spinner("조건에 맞는 시청 기록 찾는 중..."):
+                    while True:
+                        data = fetch_anime(
+                            temp_api_page, "POPULARITY_DESC", 
+                            s_year, s_season, s_genres, s_ex_genres,
+                            new_search, ids=target_ids, exclude_ids=exclude_ids,
+                            include_adult=s_adult, per_page=50
+                        )
+                        if not data or not data['media']: break
+                        all_fetched.extend(data['media'])
+                        if not data['pageInfo']['hasNextPage'] or len(all_fetched) >= 500: break
+                        temp_api_page += 1
+                
+                # 평점순 정렬 (평점 -> 시청 횟수 순)
+                all_fetched.sort(key=lambda x: (
+                    current_watched.get(x['id'], {}).get('rating', 0),
+                    current_watched.get(x['id'], {}).get('count', 1)
+                ), reverse=True)
+                
+                st.session_state.all_media = all_fetched
+                st.session_state.has_next = False
+                st.session_state.total_pages = 1
+        else:
+            # 필터가 없는 경우: 기존의 효율적인 ID 기반 페이징 로직 사용
+            per_page = 24
+            start_idx = (st.session_state.page - 1) * per_page
+            end_idx = start_idx + per_page
+            paged_ids = target_ids[start_idx:end_idx]
             
-            if data and data['media']:
-                new_items = data['media']
-                # 3. API는 순서를 보장하지 않으므로 paged_ids 순서대로 다시 재배치 (핵심!)
-                media_dict = {m['id']: m for m in new_items}
-                sorted_new_items = []
-                for aid in paged_ids:
-                    if aid in media_dict:
-                        sorted_new_items.append(media_dict[aid])
-                
-                # 4. 세션 목록에 추가 (중복 방지)
-                existing_ids = {m['id'] for m in st.session_state.all_media}
-                for item in sorted_new_items:
-                    if item['id'] not in existing_ids:
-                        st.session_state.all_media.append(item)
-                
-                # 페이징 정보 갱신
-                st.session_state.has_next = end_idx < len(target_ids)
-                st.session_state.total_pages = (len(target_ids) + per_page - 1) // per_page
+            if paged_ids:
+                # 필터가 없으므로 API 정렬은 무관, paged_ids 순서 유지가 중요
+                data = fetch_anime(1, "POPULARITY_DESC", None, None, None, None, None, ids=paged_ids, per_page=24)
+                if data and data['media']:
+                    media_dict = {m['id']: m for m in data['media']}
+                    sorted_new_items = []
+                    for aid in paged_ids:
+                        if aid in media_dict: sorted_new_items.append(media_dict[aid])
+                    
+                    existing_ids = {m['id'] for m in st.session_state.all_media}
+                    for item in sorted_new_items:
+                        if item['id'] not in existing_ids:
+                            st.session_state.all_media.append(item)
+                    
+                    st.session_state.has_next = end_idx < len(target_ids)
+                    st.session_state.total_pages = (len(target_ids) + per_page - 1) // per_page
     else:
         # 일반적인 API 페이징 처리 (루프를 통해 부족한 수량 채움)
         if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"

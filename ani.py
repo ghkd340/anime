@@ -287,6 +287,31 @@ def batch_update_db(data_dict):
     threading.Thread(target=run_in_thread, daemon=True).start()
     load_watched_from_db.clear()
 
+# --- API 공통 요청 함수 (429 에러 대응 및 재시도 로직) ---
+def safe_anilist_request(query, variables, max_retries=3):
+    url = 'https://graphql.anilist.co'
+    for i in range(max_retries):
+        try:
+            res = requests.post(url, json={'query': query, 'variables': variables}, timeout=15)
+            # 429 Too Many Requests 처리
+            if res.status_code == 429:
+                retry_after = int(res.headers.get("Retry-After", 1))
+                import time
+                time.sleep(retry_after + i) # 점진적으로 대기 시간 증가
+                continue
+            
+            res.raise_for_status()
+            res_json = res.json()
+            if 'errors' in res_json:
+                return None, res_json['errors']
+            return res_json.get('data', {}), None
+        except Exception as e:
+            if i == max_retries - 1:
+                return None, str(e)
+            import time
+            time.sleep(1 * (i + 1))
+    return None, "최대 재시도 횟수를 초과했습니다."
+
 # --- 유틸리티 함수 (Module Level) ---
 def get_watched_metadata(ids):
     """AniList ID 목록을 받아 정보를 가져옵니다. 이미 로드된 데이터는 캐시를 사용하고 미보유분만 병렬로 가져옵니다."""
@@ -302,7 +327,6 @@ def get_watched_metadata(ids):
     missing_ids = [i for i in clean_ids if i not in st.session_state.metadata_storage]
     
     if missing_ids:
-        url = 'https://graphql.anilist.co'
         query = '''
         query ($ids: [Int]) {
           Page(page: 1, perPage: 50) {
@@ -328,11 +352,10 @@ def get_watched_metadata(ids):
         
         def fetch_chunk(chunk):
             chunk_data = {}
-            try:
-                res = requests.post(url, json={'query': query, 'variables': {'ids': chunk}}, timeout=15)
-                res_json = res.json()
-                data = res_json.get('data', {}).get('Page', {}).get('media', [])
-                for m in data:
+            data, errors = safe_anilist_request(query, {'ids': chunk})
+            if data:
+                media_list = data.get('Page', {}).get('media', [])
+                for m in media_list:
                     chunk_data[int(m['id'])] = {
                         'title': m.get('title', {}),
                         'episodes': m.get('episodes') or 0,
@@ -340,12 +363,11 @@ def get_watched_metadata(ids):
                         'genres': m.get('genres', []),
                         'relations': m.get('relations', {}).get('edges', [])
                     }
-            except: pass
             return chunk_data
 
-        # 50개씩 병렬 요청 (미보유 데이터만)
+        # 병렬 요청 개수를 3개로 유지하여 안정성 확보
         chunks = [missing_ids[i:i+50] for i in range(0, len(missing_ids), 50)]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             future_to_chunk = {executor.submit(fetch_chunk, chunk): chunk for chunk in chunks}
             for future in concurrent.futures.as_completed(future_to_chunk):
                 st.session_state.metadata_storage.update(future.result())
@@ -392,6 +414,7 @@ if 'all_media' not in st.session_state: st.session_state.all_media = []
 if 'random_media' not in st.session_state: st.session_state.random_media = None
 if 'is_random_mode' not in st.session_state: st.session_state.is_random_mode = False
 if 'page' not in st.session_state: st.session_state.page = 1
+if 'api_page' not in st.session_state: st.session_state.api_page = 1 # 실제 API에서 불러올 페이지 번호
 if 'has_next' not in st.session_state: st.session_state.has_next = True
 if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
 if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
@@ -529,7 +552,7 @@ run_auth_shield()
 
 # 6. API 호출 (캐싱)
 @st.cache_data(ttl=3600)
-def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
+def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
     url = 'https://graphql.anilist.co'
     # relations는 상세 정보 로딩 시에만 필요하므로 메인 목록에서는 제외하여 속도 최적화
     media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format"
@@ -550,7 +573,7 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
     def build_query(is_adult_filter):
         return f'''
         query ($y: Int, $s: MediaSeason, $p: Int, $sort: [MediaSort], $g: [String], $eg: [String], $q: String, $ids: [Int], $ex_ids: [Int]) {{
-          Page(page: $p, perPage: 24) {{
+          Page(page: $p, perPage: {per_page}) {{
             pageInfo {{ lastPage hasNextPage }}
             media(id_in: $ids, id_not_in: $ex_ids, search: $q, season: $s, seasonYear: $y, type: ANIME, sort: $sort, genre_in: $g, genre_not_in: $eg, isAdult: {is_adult_filter}) {{
               {media_fields}
@@ -560,16 +583,10 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
         '''
 
     def make_request(is_adult):
-        try:
-            payload = {'query': build_query("true" if is_adult else "false"), 'variables': base_vars}
-            res = requests.post(url, json=payload, timeout=10)
-            res.raise_for_status()
-            res_json = res.json()
-            if 'errors' in res_json:
-                return None, res_json['errors']
-            return res_json.get('data', {}).get('Page'), None
-        except Exception as e:
-            return None, str(e)
+        data, errors = safe_anilist_request(build_query("true" if is_adult else "false"), base_vars)
+        if errors:
+            return None, errors
+        return data.get('Page'), None
 
     try:
         if not include_adult:
@@ -1081,6 +1098,7 @@ current_filters = {
 if st.session_state.last_filters != current_filters:
     st.session_state.all_media = []
     st.session_state.page = 1
+    st.session_state.api_page = 1
     st.session_state.last_filters = current_filters
     st.session_state.has_next = True
     st.session_state.is_random_mode = False
@@ -1118,13 +1136,14 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
     api_sort = sort_map.get(st.session_state.sort_by, "POPULARITY_DESC")
     
     # "내 평점순" 정렬이면서 "본 작품만"인 경우 클라이언트 사이드 페이징 적용
-    is_client_side_paging = (st.session_state.sort_by == "내 평점순" and only_w)
+    # 단, 다른 필터(검색, 년도, 분기, 장르)가 활성화된 경우 API에서 필터링을 수행해야 하므로 제외
+    has_active_filters = any([new_search, s_year, s_season, s_genres, s_ex_genres])
+    is_client_side_paging = (st.session_state.sort_by == "내 평점순" and only_w and not has_active_filters)
     
-    current_page = st.session_state.page
     if is_client_side_paging and target_ids:
         # 이미 정렬된 target_ids에서 현재 페이지에 해당하는 24개만 추출
         per_page = 24
-        start_idx = (current_page - 1) * per_page
+        start_idx = (st.session_state.page - 1) * per_page
         end_idx = start_idx + per_page
         
         # 전체 목록이 500개로 제한되어 있으므로 그 내에서 페이징
@@ -1142,41 +1161,70 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
         )
         
         if data:
+            new_items = data['media']
+            existing_ids = {m['id'] for m in st.session_state.all_media}
+            for item in new_items:
+                if item['id'] not in existing_ids:
+                    st.session_state.all_media.append(item)
             # 페이징 정보 수동 계산
-            data['pageInfo']['hasNextPage'] = end_idx < len(target_ids)
-            data['pageInfo']['lastPage'] = (len(target_ids) + per_page - 1) // per_page
+            st.session_state.has_next = end_idx < len(target_ids)
+            st.session_state.total_pages = (len(target_ids) + per_page - 1) // per_page
     else:
-        # 일반적인 API 페이징 처리
-        if api_sort == "MY_SCORE_DESC":
-            api_sort = "POPULARITY_DESC"
-
-        data = fetch_anime(
-            current_page, 
-            api_sort, 
-            s_year, s_season, s_genres, s_ex_genres,
-            new_search if new_search else None,
-            ids=target_ids,
-            exclude_ids=exclude_ids,
-            include_adult=s_adult
-        )
-
-    if data:
-        new_items = data['media']
+        # 일반적인 API 페이징 처리 (루프를 통해 부족한 수량 채움)
+        if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"
         
-        # "내 평점순"인 경우 가져온 결과 내에서 다시 한 번 정렬 (평점 -> 시청 횟수 순)
-        if st.session_state.sort_by == "내 평점순":
-            current_watched = st.session_state.watched_list or {}
-            new_items.sort(key=lambda x: (
-                current_watched.get(x['id'], {}).get('rating', 0),
-                current_watched.get(x['id'], {}).get('count', 1)
-            ), reverse=True)
+        # 목표 수량이 채워질 때까지 최대 5번 시도 (무한 루프 방지)
+        attempts = 0
+        while st.session_state.has_next and len(st.session_state.all_media) < st.session_state.page * 24 and attempts < 5:
+            attempts += 1
+            # 안 본 작품만 필터링 시에는 한 번에 50개씩 가져와서 효율성 증대
+            fetch_size = 50 if only_not_w else 24
             
-        existing_ids = {m['id'] for m in st.session_state.all_media}
-        for item in new_items:
-            if item['id'] not in existing_ids:
-                st.session_state.all_media.append(item)
-        st.session_state.has_next = data['pageInfo']['hasNextPage']
-        st.session_state.total_pages = data['pageInfo']['lastPage']
+            data = fetch_anime(
+                st.session_state.api_page, 
+                api_sort, 
+                s_year, s_season, s_genres, s_ex_genres,
+                new_search if new_search else None,
+                ids=target_ids,
+                exclude_ids=exclude_ids,
+                include_adult=s_adult,
+                per_page=fetch_size
+            )
+
+            if data:
+                new_items = data['media']
+                
+                # "안 본 작품만" 필터링 시 클라이언트 사이드에서 한 번 더 검증 (500개 제한 대비)
+                current_watched = st.session_state.watched_list or {}
+                if only_not_w:
+                    new_items = [m for m in new_items if m['id'] not in current_watched]
+                
+                # "내 평점순"인 경우 가져온 결과 내에서 다시 한 번 정렬 (평점 -> 시청 횟수 순)
+                if st.session_state.sort_by == "내 평점순":
+                    new_items.sort(key=lambda x: (
+                        current_watched.get(x['id'], {}).get('rating', 0),
+                        current_watched.get(x['id'], {}).get('count', 1)
+                    ), reverse=True)
+                
+                # 중복 제거 및 추가
+                existing_ids = {m['id'] for m in st.session_state.all_media}
+                added_count = 0
+                for item in new_items:
+                    if item['id'] not in existing_ids:
+                        st.session_state.all_media.append(item)
+                        added_count += 1
+                
+                st.session_state.has_next = data['pageInfo']['hasNextPage']
+                st.session_state.total_pages = data['pageInfo']['lastPage']
+                st.session_state.api_page += 1
+                
+                # 만약 이번 페이지에서 아무것도 추가되지 않았는데 다음 페이지가 있다면 즉시 다음 시도
+                if added_count == 0 and st.session_state.has_next:
+                    continue
+                else:
+                    break
+            else:
+                break
 
 # 7. 메인 화면 렌더링
 anime_list = st.session_state.all_media

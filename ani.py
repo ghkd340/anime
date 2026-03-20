@@ -360,8 +360,8 @@ def fetch_metadata_from_api(missing_ids):
             results.update(future.result())
     return results
 
-def get_watched_metadata(ids):
-    """세션 캐시와 글로벌 캐시를 조합하여 메타데이터를 반환합니다."""
+def get_watched_metadata(ids, p_bar_container=None):
+    """세션 캐시와 글로벌 캐시를 조합하여 메타데이터를 반환합니다. 진행률 표시 기능을 지원합니다."""
     if not ids: return {}
     if "metadata_storage" not in st.session_state:
         st.session_state.metadata_storage = {}
@@ -370,9 +370,24 @@ def get_watched_metadata(ids):
     missing_ids = [i for i in clean_ids if i not in st.session_state.metadata_storage]
     
     if missing_ids:
-        # 글로벌 캐시된 API 호출 함수 사용
-        api_results = fetch_metadata_from_api(missing_ids)
-        st.session_state.metadata_storage.update(api_results)
+        # 50개씩 청크 분할
+        chunks = [missing_ids[i:i+50] for i in range(0, len(missing_ids), 50)]
+        total_chunks = len(chunks)
+        
+        # 병렬 작업 수행 (Workers를 10개로 늘려 속도 향상)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_chunk = {executor.submit(fetch_metadata_from_api, tuple(chunk)): chunk for chunk in chunks}
+            
+            completed = 0
+            for future in concurrent.futures.as_completed(future_to_chunk):
+                try:
+                    res = future.result()
+                    st.session_state.metadata_storage.update(res)
+                    completed += 1
+                    if p_bar_container:
+                        progress = completed / total_chunks
+                        p_bar_container.progress(progress, f"분석 중... ({completed}/{total_chunks})")
+                except: pass
             
     return {i: st.session_state.metadata_storage[i] for i in clean_ids if i in st.session_state.metadata_storage}
 
@@ -437,8 +452,8 @@ def run_auth_shield():
     auth_state = st.query_params.get("state")
     
     if auth_code and auth_state:
-        # oauth_storage에서 code_verifier 복구
-        code_verifier = oauth_storage.get(auth_state)
+        # oauth_storage에서 code_verifier를 꺼내오면서 즉시 삭제 (중복 사용 방지)
+        code_verifier = oauth_storage.pop(auth_state, None)
         if code_verifier:
             try:
                 flow = get_google_auth_flow()
@@ -684,10 +699,12 @@ with st.sidebar:
         current_hash = hash(frozenset(current_watched.keys())) + watched_count
         
         if st.session_state.stats_cache["hash"] != current_hash and watched_count > 0:
+            stats_pbar = st.empty()
             with st.spinner("통계 분석 중..."):
                 avg_score = sum(v.get('rating', 0) for v in current_watched.values()) / watched_count
                 watched_ids = [int(aid) for aid in current_watched.keys()]
-                meta_map = get_watched_metadata(watched_ids)
+                meta_map = get_watched_metadata(watched_ids, p_bar_container=stats_pbar)
+                stats_pbar.empty() # 작업 완료 후 표시줄 제거
                 
                 total_minutes = 0
                 genre_stats = {} 
@@ -1338,7 +1355,7 @@ else:
                 with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
                     if is_w:
                         w_data = current_watched.get(a_id, {})
-                        u_score = st.slider("내 평점", 0.0, 5.0, float(w_data.get("rating", 5.0)), 0.1, format="%.1f", key=f"score_edit_{a_id}_{ac}")
+                        u_score = st.slider("내 평점", 0.0, 5.0, round(float(w_data.get("rating", 5.0)), 1), 0.1, format="%.1f", key=f"score_edit_{a_id}_{ac}")
                         u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"count_edit_{a_id}_{ac}")
                         u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_edit_{a_id}_{ac}")
                         

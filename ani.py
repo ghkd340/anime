@@ -436,6 +436,7 @@ if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
 if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
 if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 if 'action_cnt' not in st.session_state: st.session_state.action_cnt = 0
+if 'time_unit' not in st.session_state: st.session_state.time_unit = "자동"
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
@@ -773,39 +774,66 @@ with st.sidebar:
                 else:
                     t_str = f"{total_minutes}분"
                     
-                # 결과 캐싱
+                # 결과 캐싱 (원천 데이터인 total_minutes를 함께 저장)
                 st.session_state.stats_cache = {
                     "hash": current_hash,
                     "data": {
                         "avg_score": avg_score,
                         "series_count": series_count,
-                        "total_time_str": t_str,
+                        "total_minutes": total_minutes,
                         "sorted_genres": sorted_genres
                     }
                 }
 
         # 캐시된 데이터 사용
         stats = st.session_state.stats_cache["data"] or {
-            "avg_score": 0, "series_count": 0, "total_time_str": "0분", "sorted_genres": []
+            "avg_score": 0, "series_count": 0, "total_minutes": 0, "sorted_genres": []
         }
         avg_score = stats["avg_score"]
         series_count = stats["series_count"]
-        total_time_str = stats["total_time_str"]
+        total_minutes = stats["total_minutes"]
         sorted_genres = stats["sorted_genres"]
 
-        
+        # 1. 시청 시간 단위 설정 (팝오버로 분리하여 레이아웃 깨짐 방지)
+        st.write("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        col_title, col_opt = st.columns([3, 1])
+        with col_title:
+            st.markdown('<div style="font-size: 0.9rem; font-weight: bold; margin-top: 5px;">📊 나의 아카이브 현황</div>', unsafe_allow_html=True)
+        with col_opt:
+            with st.popover("⚙️", help="시청 시간 단위 변경"):
+                t_unit = st.selectbox("시간 단위", ["자동", "일", "시간", "분", "초"], 
+                                    index=["자동", "일", "시간", "분", "초"].index(st.session_state.time_unit), 
+                                    key="time_unit_selector")
+                st.session_state.time_unit = t_unit
+
+        # 2. 시간 포맷팅 계산
+        if st.session_state.time_unit == "자동":
+            if total_minutes >= 1440:
+                days = total_minutes // 1440
+                hours = (total_minutes % 1440) // 60
+                total_time_str = f"{days}일 {hours}시간"
+            elif total_minutes >= 60:
+                hours = total_minutes // 60
+                mins = total_minutes % 60
+                total_time_str = f"{hours}시간 {mins}분"
+            else: total_time_str = f"{total_minutes}분"
+        elif st.session_state.time_unit == "일": total_time_str = f"{total_minutes / 1440:.1f}일"
+        elif st.session_state.time_unit == "시간": total_time_str = f"{total_minutes / 60:.1f}시간"
+        elif st.session_state.time_unit == "분": total_time_str = f"{total_minutes:,}분"
+        elif st.session_state.time_unit == "초": total_time_str = f"{total_minutes * 60:,}초"
+
+        # 3. 통합 통계 카드 (단일 마크다운으로 구성하여 절대 깨지지 않음)
         st.markdown(f"""
-        <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(76, 175, 80, 0.2); margin: 15px 0;">
-            <div style="font-size: 0.8rem; color: var(--secondary-text-color); margin-bottom: 5px;">나의 아카이브 현황</div>
-            <div style="display: flex; justify-content: space-around; align-items: center; margin-bottom: 15px; text-align: center;">
+        <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(76, 175, 80, 0.2); margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-around; align-items: center; text-align: center; margin-bottom: 15px;">
                 <div>
                     <div style="font-size: 1.2rem; font-weight: bold; color: #4CAF50;">{watched_count}</div>
-                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청한 작품</div>
+                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청 작품</div>
                 </div>
                 <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 30px;"></div>
                 <div>
                     <div style="font-size: 1.2rem; font-weight: bold; color: #2E7D32;">{series_count}</div>
-                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청한 시리즈</div>
+                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시리즈</div>
                 </div>
                 <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 30px;"></div>
                 <div>
@@ -814,8 +842,11 @@ with st.sidebar:
                 </div>
             </div>
             <div style="border-top: 1px dashed rgba(76, 175, 80, 0.2); padding-top: 10px;">
-                <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">총 시청 시간</div>
-                <div style="font-size: 1.1rem; color: #4CAF50; font-weight: bold;">⏱️ {total_time_str}</div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">총 시청 시간</div>
+                    <div style="font-size: 0.6rem; color: #666; background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 4px;">{st.session_state.time_unit}</div>
+                </div>
+                <div style="font-size: 1.15rem; color: #4CAF50; font-weight: bold; margin-top: 5px;">⏱️ {total_time_str}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)

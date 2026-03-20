@@ -313,66 +313,67 @@ def safe_anilist_request(query, variables, max_retries=3):
     return None, "최대 재시도 횟수를 초과했습니다."
 
 # --- 유틸리티 함수 (Module Level) ---
-def get_watched_metadata(ids):
-    """AniList ID 목록을 받아 정보를 가져옵니다. 이미 로드된 데이터는 캐시를 사용하고 미보유분만 병렬로 가져옵니다."""
-    if not ids: return {}
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_metadata_from_api(missing_ids):
+    """API에서 메타데이터를 가져오는 핵심 로직 (글로벌 캐시 적용)"""
+    if not missing_ids: return {}
     
-    # 1. 세션 저장소 초기화
-    if "metadata_storage" not in st.session_state:
-        st.session_state.metadata_storage = {}
-    
-    clean_ids = list(set(int(x) for x in ids))
-    
-    # 2. 이미 가지고 있는 데이터와 새로 가져와야 할 데이터 구분
-    missing_ids = [i for i in clean_ids if i not in st.session_state.metadata_storage]
-    
-    if missing_ids:
-        query = '''
-        query ($ids: [Int]) {
-          Page(page: 1, perPage: 50) {
-            media(id_in: $ids, type: ANIME) {
-              id
-              title { native romaji }
-              episodes
-              duration
-              genres
-              relations {
-                edges {
-                  relationType(version: 2)
-                  node {
-                    id
-                    type
-                  }
-                }
-              }
+    query = '''
+    query ($ids: [Int]) {
+      Page(page: 1, perPage: 50) {
+        media(id_in: $ids, type: ANIME) {
+          id
+          title { native romaji }
+          episodes
+          duration
+          genres
+          relations {
+            edges {
+              relationType(version: 2)
+              node { id type }
             }
           }
         }
-        '''
-        
-        def fetch_chunk(chunk):
-            chunk_data = {}
-            data, errors = safe_anilist_request(query, {'ids': chunk})
-            if data:
-                media_list = data.get('Page', {}).get('media', [])
-                for m in media_list:
-                    chunk_data[int(m['id'])] = {
-                        'title': m.get('title', {}),
-                        'episodes': m.get('episodes') or 0,
-                        'duration': m.get('duration') or 0,
-                        'genres': m.get('genres', []),
-                        'relations': m.get('relations', {}).get('edges', [])
-                    }
-            return chunk_data
+      }
+    }
+    '''
+    
+    def fetch_chunk(chunk):
+        chunk_data = {}
+        data, errors = safe_anilist_request(query, {'ids': chunk})
+        if data:
+            for m in data.get('Page', {}).get('media', []):
+                chunk_data[int(m['id'])] = {
+                    'title': m.get('title', {}),
+                    'episodes': m.get('episodes') or 0,
+                    'duration': m.get('duration') or 0,
+                    'genres': m.get('genres', []),
+                    'relations': m.get('relations', {}).get('edges', [])
+                }
+        return chunk_data
 
-        # 병렬 요청 개수를 3개로 유지하여 안정성 확보
-        chunks = [missing_ids[i:i+50] for i in range(0, len(missing_ids), 50)]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            future_to_chunk = {executor.submit(fetch_chunk, chunk): chunk for chunk in chunks}
-            for future in concurrent.futures.as_completed(future_to_chunk):
-                st.session_state.metadata_storage.update(future.result())
+    results = {}
+    chunks = [missing_ids[i:i+50] for i in range(0, len(missing_ids), 50)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_chunk = {executor.submit(fetch_chunk, chunk): chunk for chunk in chunks}
+        for future in concurrent.futures.as_completed(future_to_chunk):
+            results.update(future.result())
+    return results
+
+def get_watched_metadata(ids):
+    """세션 캐시와 글로벌 캐시를 조합하여 메타데이터를 반환합니다."""
+    if not ids: return {}
+    if "metadata_storage" not in st.session_state:
+        st.session_state.metadata_storage = {}
+        
+    clean_ids = list(set(int(x) for x in ids))
+    missing_ids = [i for i in clean_ids if i not in st.session_state.metadata_storage]
+    
+    if missing_ids:
+        # 글로벌 캐시된 API 호출 함수 사용
+        api_results = fetch_metadata_from_api(missing_ids)
+        st.session_state.metadata_storage.update(api_results)
             
-    # 3. 요청받은 ID들에 해당하는 데이터만 모아서 반환
     return {i: st.session_state.metadata_storage[i] for i in clean_ids if i in st.session_state.metadata_storage}
 
 # 3. 구글 OAuth 설정 함수

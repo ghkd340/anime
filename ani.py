@@ -1022,8 +1022,12 @@ with st.sidebar:
 
 # 정렬 옵션 설정
 sort_map = {"인기도순": "POPULARITY_DESC", "평점순": "SCORE_DESC"}
-if st.session_state.logged_in:
+if st.session_state.logged_in and only_w:
     sort_map["내 평점순"] = "MY_SCORE_DESC"
+else:
+    # "내 평점순"이 선택된 상태에서 필터가 바뀌어 더 이상 유효하지 않은 경우 정렬 초기화
+    if st.session_state.sort_by == "내 평점순":
+        st.session_state.sort_by = "인기도순"
 
 # 필터 상태 감지 (변경 시 목록 초기화)
 current_filters = {
@@ -1071,18 +1075,49 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
 
     # API용 정렬 값 결정
     api_sort = sort_map.get(st.session_state.sort_by, "POPULARITY_DESC")
-    if api_sort == "MY_SCORE_DESC":
-        api_sort = "POPULARITY_DESC" # API에는 인기도순으로 요청하고 결과만 재정렬
+    
+    # "내 평점순" 정렬이면서 "본 작품만"인 경우 클라이언트 사이드 페이징 적용
+    is_client_side_paging = (st.session_state.sort_by == "내 평점순" and only_w)
+    
+    current_page = st.session_state.page
+    if is_client_side_paging and target_ids:
+        # 이미 정렬된 target_ids에서 현재 페이지에 해당하는 24개만 추출
+        per_page = 24
+        start_idx = (current_page - 1) * per_page
+        end_idx = start_idx + per_page
+        
+        # 전체 목록이 500개로 제한되어 있으므로 그 내에서 페이징
+        paged_ids = target_ids[start_idx:end_idx]
+        
+        # API에는 이 24개만 요청 (page는 1로 고정)
+        data = fetch_anime(
+            1, 
+            "POPULARITY_DESC", 
+            s_year, s_season, s_genres, s_ex_genres,
+            new_search if new_search else None,
+            ids=paged_ids if paged_ids else [0],
+            exclude_ids=exclude_ids,
+            include_adult=s_adult
+        )
+        
+        if data:
+            # 페이징 정보 수동 계산
+            data['pageInfo']['hasNextPage'] = end_idx < len(target_ids)
+            data['pageInfo']['lastPage'] = (len(target_ids) + per_page - 1) // per_page
+    else:
+        # 일반적인 API 페이징 처리
+        if api_sort == "MY_SCORE_DESC":
+            api_sort = "POPULARITY_DESC"
 
-    data = fetch_anime(
-        st.session_state.page, 
-        api_sort, 
-        s_year, s_season, s_genres, s_ex_genres,
-        new_search if new_search else None,
-        ids=target_ids,
-        exclude_ids=exclude_ids,
-        include_adult=s_adult
-    )
+        data = fetch_anime(
+            current_page, 
+            api_sort, 
+            s_year, s_season, s_genres, s_ex_genres,
+            new_search if new_search else None,
+            ids=target_ids,
+            exclude_ids=exclude_ids,
+            include_adult=s_adult
+        )
 
     if data:
         new_items = data['media']

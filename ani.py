@@ -994,7 +994,31 @@ with st.sidebar:
 
     st.divider()
     st.header("🔍 검색 및 필터")
-    
+
+    # --- 필터 초기화 로직 (Callback 함수) ---
+    def reset_all_filters():
+        # 1. URL 파라미터 중 검색어만 제거 (adult는 유지)
+        if "q" in st.query_params:
+            del st.query_params["q"]
+        
+        # 2. 위젯 키 값 초기화 (성인물 필터는 제외)
+        st.session_state.search_input = ""
+        st.session_state.prev_q = ""
+        st.session_state.year_filter = "전체"
+        st.session_state.season_filter = "전체"
+        st.session_state.genre_filter = []
+        st.session_state.ex_genre_filter = []
+        if st.session_state.logged_in:
+            st.session_state.watch_filter = "전체"
+        
+        if "rating_filter" in st.session_state:
+            st.session_state.rating_filter = 0.0
+        
+        # 3. 데이터 및 페이지 초기화
+        st.session_state.all_media = []
+        st.session_state.page = 1
+        st.session_state.api_page = 1
+
     # 제목 검색 (즉시 반영)
     search_q = st.query_params.get("q", "")
     
@@ -1006,7 +1030,7 @@ with st.sidebar:
         st.session_state.search_input = search_q
         st.session_state.prev_q = search_q
         
-    # 2. 위젯 생성 (value 인자 제거하여 세션 상태와 충돌 방지)
+    # 2. 위젯 생성
     new_search = st.text_input("제목 검색", placeholder="영문 또는 일문 제목", key="search_input")
 
     # 모바일 키보드 제어 JS (검색창은 키보드 활성화, 필터류는 비활성화)
@@ -1056,14 +1080,14 @@ with st.sidebar:
 
     st.divider()
     years = ["전체"] + list(range(datetime.now().year, 1989, -1))
-    s_year_val = st.selectbox("년도", years)
+    s_year_val = st.selectbox("년도", years, key="year_filter")
     s_year = s_year_val if s_year_val != "전체" else None
 
     season_labels = ["전체", "1분기", "2분기", "3분기", "4분기"]
     season_values = [None, "WINTER", "SPRING", "SUMMER", "FALL"]
     season_map = dict(zip(season_labels, season_values))
     
-    s_season_label = st.selectbox("분기", season_labels)
+    s_season_label = st.selectbox("분기", season_labels, key="season_filter")
     s_season = season_map[s_season_label]
     
     # 장르 선택
@@ -1073,22 +1097,26 @@ with st.sidebar:
         "음악": "Music", "미스터리": "Mystery", "심리": "Psychological", "로맨스": "Romance", 
         "SF": "Sci-Fi", "일상": "Slice of Life", "스포츠": "Sports", "초자연": "Supernatural", "스릴러": "Thriller"
     }
-    selected_genres = st.multiselect("포함 장르", list(genre_map.keys()))
+    selected_genres = st.multiselect("포함 장르", list(genre_map.keys()), key="genre_filter")
     s_genres = [genre_map[g] for g in selected_genres] if selected_genres else None
 
     # 제외 장르 추가 (-)
-    excluded_genres = st.multiselect("제외 장르", list(genre_map.keys()))
+    excluded_genres = st.multiselect("제외 장르", list(genre_map.keys()), key="ex_genre_filter")
     s_ex_genres = [genre_map[g] for g in excluded_genres] if excluded_genres else None
     
     # 시청 여부 필터 (Mutual Exclusive)
     watch_options = ["전체", "본 작품만", "안 본 작품만"]
-    s_watch = st.selectbox("시청 여부", watch_options) if st.session_state.logged_in else "전체"
+    s_watch = st.selectbox("시청 여부", watch_options, key="watch_filter") if st.session_state.logged_in else "전체"
     only_w = (s_watch == "본 작품만")
     only_not_w = (s_watch == "안 본 작품만")
-    
+
+    # --- 필터 초기화 버튼 (시청 여부 아래 배치) ---
+    if st.button("🔄 전체 필터 초기화", use_container_width=True, on_click=reset_all_filters):
+        st.rerun()
+
     # 성인물 설정 (쿼리 파라미터 연동으로 새로고침 유지)
     adult_param = st.query_params.get("adult", "false") == "true"
-    s_adult = st.checkbox("성인물 포함", value=adult_param)
+    s_adult = st.checkbox("성인물 포함", value=adult_param, key="adult_filter")
 
     if s_adult != adult_param:
         st.query_params["adult"] = "true" if s_adult else "false"
@@ -1098,7 +1126,7 @@ with st.sidebar:
     # 내 평점 필터 추가 (봤을 때만 유효)
     s_rating = 0.0
     if only_w:
-        s_rating = st.slider("최소 평점 (내 평점)", 0.0, 5.0, 0.0, 0.1)
+        s_rating = st.slider("최소 평점 (내 평점)", 0.0, 5.0, 0.0, 0.1, key="rating_filter")
 
     st.divider()
     if st.button("🎲 랜덤 추천 받기", use_container_width=True, type="primary"):

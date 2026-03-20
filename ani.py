@@ -532,7 +532,7 @@ run_auth_shield()
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
     url = 'https://graphql.anilist.co'
     # relations는 상세 정보 로딩 시에만 필요하므로 메인 목록에서는 제외하여 속도 최적화
-    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site }"
+    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day }"
     
     # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
@@ -601,6 +601,12 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
                 combined_media.sort(key=lambda x: x.get('popularity', 0), reverse=True)
             elif "SCORE_DESC" in sort:
                 combined_media.sort(key=lambda x: x.get('averageScore', 0) or 0, reverse=True)
+            elif "START_DATE_DESC" in sort:
+                combined_media.sort(key=lambda x: (
+                    x.get('startDate', {}).get('year') or 0,
+                    x.get('startDate', {}).get('month') or 0,
+                    x.get('startDate', {}).get('day') or 0
+                ), reverse=True)
             elif "TITLE_DESC" in sort:
                 combined_media.sort(key=lambda x: (x['title']['native'] or x['title']['romaji'] or ""), reverse=True)
             
@@ -1056,7 +1062,7 @@ with st.sidebar:
             st.rerun()
 
 # 정렬 옵션 설정
-sort_map = {"인기도순": "POPULARITY_DESC", "평점순": "SCORE_DESC"}
+sort_map = {"인기도순": "POPULARITY_DESC", "평점순": "SCORE_DESC", "방영일순": "START_DATE_DESC"}
 if st.session_state.logged_in and only_w:
     sort_map["내 평점순"] = "MY_SCORE_DESC"
 else:

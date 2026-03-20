@@ -1338,7 +1338,7 @@ else:
                 with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
                     if is_w:
                         w_data = current_watched.get(a_id, {})
-                        u_score = st.slider("내 평점", 0.0, 5.0, float(w_data.get("rating", 5.0)), 0.1, key=f"score_edit_{a_id}_{ac}")
+                        u_score = st.slider("내 평점", 0.0, 5.0, float(w_data.get("rating", 5.0)), 0.1, format="%.1f", key=f"score_edit_{a_id}_{ac}")
                         u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"count_edit_{a_id}_{ac}")
                         u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_edit_{a_id}_{ac}")
                         

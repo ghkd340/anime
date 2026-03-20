@@ -778,6 +778,7 @@ with st.sidebar:
                         count = info.get('count', 1)
                         total_minutes += meta['episodes'] * meta['duration'] * count
                         for g in meta['genres']:
+                            if g == "Hentai": continue
                             ko_g = ko_genre_map.get(g, g)
                             if ko_g not in genre_stats: genre_stats[ko_g] = [0, 0]
                             genre_stats[ko_g][0] += rating

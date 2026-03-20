@@ -1321,124 +1321,127 @@ st.divider()
 if not anime_list: 
     st.info("데이터가 없습니다.")
 else:
-    cols = st.columns(4)
-    for i, anime in enumerate(anime_list):
-        a_id = anime['id']
-        current_watched = st.session_state.watched_list or {}
-        with cols[i % 4]:
-            st.markdown('<div class="anime-card-container">', unsafe_allow_html=True)
-            st.image(anime['coverImage']['extraLarge'], use_container_width=True)
-            is_w = a_id in current_watched
-            if is_w:
-                w_data = current_watched.get(a_id, {})
-                user_rating = w_data.get("rating", 5.0)
-                user_count = w_data.get("count", 1)
-                count_str = f" ({user_count}회)" if user_count > 1 else ""
-                st.markdown(f'<div class="watched-badge">✓ {user_rating}점{count_str}</div>', unsafe_allow_html=True)
-            else: st.markdown('<div style="height:1.5rem; margin-bottom:5px;"></div>', unsafe_allow_html=True)
+    # 4개씩 묶어서 행(row) 단위로 렌더링 (모바일 정렬 순서 문제 해결)
+    for i in range(0, len(anime_list), 4):
+        cols = st.columns(4)
+        chunk = anime_list[i:i+4]
+        for j, anime in enumerate(chunk):
+            a_id = anime['id']
+            current_watched = st.session_state.watched_list or {}
+            with cols[j]:
+                st.markdown('<div class="anime-card-container">', unsafe_allow_html=True)
+                st.image(anime['coverImage']['extraLarge'], use_container_width=True)
+                is_w = a_id in current_watched
+                if is_w:
+                    w_data = current_watched.get(a_id, {})
+                    user_rating = w_data.get("rating", 5.0)
+                    user_count = w_data.get("count", 1)
+                    count_str = f" ({user_count}회)" if user_count > 1 else ""
+                    st.markdown(f'<div class="watched-badge">✓ {user_rating}점{count_str}</div>', unsafe_allow_html=True)
+                else: st.markdown('<div style="height:1.5rem; margin-bottom:5px;"></div>', unsafe_allow_html=True)
 
-            st.markdown(f"<div class='anime-title-box'>{anime['title']['native'] or anime['title']['romaji']}</div>", unsafe_allow_html=True)
-            
-            # 포맷 매핑
-            f_map = {
-                "TV": "TV", "TV_SHORT": "TV (Short)", "MOVIE": "영화", 
-                "SPECIAL": "특별편", "OVA": "OVA", "ONA": "ONA", "MUSIC": "뮤직"
-            }
-            a_format = f_map.get(anime.get('format'), anime.get('format') or "Unknown")
-            st.markdown(f"<div style='font-size: 0.75rem; color: #888; margin-top: -10px; margin-bottom: 5px;'>{a_format}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='anime-title-box'>{anime['title']['native'] or anime['title']['romaji']}</div>", unsafe_allow_html=True)
+                
+                # 포맷 매핑
+                f_map = {
+                    "TV": "TV", "TV_SHORT": "TV (Short)", "MOVIE": "영화", 
+                    "SPECIAL": "특별편", "OVA": "OVA", "ONA": "ONA", "MUSIC": "뮤직"
+                }
+                a_format = f_map.get(anime.get('format'), anime.get('format') or "Unknown")
+                st.markdown(f"<div style='font-size: 0.75rem; color: #888; margin-top: -10px; margin-bottom: 5px;'>{a_format}</div>", unsafe_allow_html=True)
 
-            s_map = {"WINTER": "1분기", "SPRING": "2분기", "SUMMER": "3분기", "FALL": "4분기"}
-            a_year = anime.get('seasonYear') or "미정"
-            a_season = s_map.get(anime.get('season'), "")
-            st.markdown(f"<div class='anime-info-box'>📅 {a_year}년 {a_season}</div>", unsafe_allow_html=True)
+                s_map = {"WINTER": "1분기", "SPRING": "2분기", "SUMMER": "3분기", "FALL": "4분기"}
+                a_year = anime.get('seasonYear') or "미정"
+                a_season = s_map.get(anime.get('season'), "")
+                st.markdown(f"<div class='anime-info-box'>📅 {a_year}년 {a_season}</div>", unsafe_allow_html=True)
 
-            raw_score = anime.get('averageScore')
-            if raw_score:
-                score_5 = round(raw_score / 20, 1)
-                full_stars = int(score_5)
-                stars = "★" * full_stars + "☆" * (5 - full_stars)
-                score_html = f"<div class='score-box'>{stars} {score_5}</div>"
-            else:
-                score_html = "<div class='score-box' style='color:#bbb;'>☆☆☆☆☆ 0.0</div>"
+                raw_score = anime.get('averageScore')
+                if raw_score:
+                    score_5 = round(raw_score / 20, 1)
+                    full_stars = int(score_5)
+                    stars = "★" * full_stars + "☆" * (5 - full_stars)
+                    score_html = f"<div class='score-box'>{stars} {score_5}</div>"
+                else:
+                    score_html = "<div class='score-box' style='color:#bbb;'>☆☆☆☆☆ 0.0</div>"
 
-            st.markdown(score_html, unsafe_allow_html=True)
+                st.markdown(score_html, unsafe_allow_html=True)
 
-            if is_w:
-                w_data = current_watched.get(a_id, {})
-                user_comment = w_data.get("comment", "")
-                if user_comment:
-                    st.markdown(f'<div class="user-comment-box">"{user_comment}"</div>', unsafe_allow_html=True)
+                if is_w:
+                    w_data = current_watched.get(a_id, {})
+                    user_comment = w_data.get("comment", "")
+                    if user_comment:
+                        st.markdown(f'<div class="user-comment-box">"{user_comment}"</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div class="empty-comment-box"></div>', unsafe_allow_html=True)
                 else:
                     st.markdown('<div class="empty-comment-box"></div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="empty-comment-box"></div>', unsafe_allow_html=True)
 
-            c1, c2, c3 = st.columns(3, gap="small")
-            
-            # 상세 팝오버
-            with c1.popover("상세", use_container_width=True, key=f"pop_detail_{a_id}"):
-                st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
+                c1, c2, c3 = st.columns(3, gap="small")
                 
-                st.divider()
-                if st.button("🔍 이름으로 검색", key=f"btn_search_{a_id}", use_container_width=True, type="primary"):
-                    title = anime['title']['native'] or anime['title']['romaji']
-                    # URL 파라미터만 갱신 (위젯 상태는 다음 런의 최상단 동기화 로직에서 처리)
-                    st.query_params["q"] = title
-                    # 목록 초기화 및 페이지 리셋
-                    st.session_state.all_media = []
-                    st.session_state.page = 1
-                    st.rerun()
-            
-            # 예고편 버튼
-            trailer = anime.get('trailer')
-            if trailer and trailer.get('site') == 'youtube':
-                with c2.popover("🎬", use_container_width=True, key=f"trailer_{a_id}"):
-                    st.video(f"https://www.youtube.com/watch?v={trailer['id']}")
-            else:
-                c2.button("🎬", disabled=True, use_container_width=True, help="예고편 정보가 없습니다.", key=f"no_trailer_{a_id}")
+                # 상세 팝오버
+                with c1.popover("상세", use_container_width=True, key=f"pop_detail_{a_id}"):
+                    st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
+                    
+                    st.divider()
+                    if st.button("🔍 이름으로 검색", key=f"btn_search_{a_id}", use_container_width=True, type="primary"):
+                        title = anime['title']['native'] or anime['title']['romaji']
+                        # URL 파라미터만 갱신 (위젯 상태는 다음 런의 최상단 동기화 로직에서 처리)
+                        st.query_params["q"] = title
+                        # 목록 초기화 및 페이지 리셋
+                        st.session_state.all_media = []
+                        st.session_state.page = 1
+                        st.rerun()
+                
+                # 예고편 버튼
+                trailer = anime.get('trailer')
+                if trailer and trailer.get('site') == 'youtube':
+                    with c2.popover("🎬", use_container_width=True, key=f"trailer_{a_id}"):
+                        st.video(f"https://www.youtube.com/watch?v={trailer['id']}")
+                else:
+                    c2.button("🎬", disabled=True, use_container_width=True, help="예고편 정보가 없습니다.", key=f"no_trailer_{a_id}")
 
-            if st.session_state.logged_in:
-                # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함
-                ac = st.session_state.action_cnt
-                pop_label = "수정" if is_w else "시청"
-                
-                with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
-                    if is_w:
-                        w_data = current_watched.get(a_id, {})
-                        u_score = st.slider("내 평점", 0.0, 5.0, round(float(w_data.get("rating", 5.0)), 1), 0.1, format="%.1f", key=f"score_edit_{a_id}_{ac}")
-                        u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"count_edit_{a_id}_{ac}")
-                        u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_edit_{a_id}_{ac}")
-                        
-                        if st.button("업데이트", key=f"btn_update_{a_id}_{ac}", use_container_width=True, type="primary"):
-                            # 낙관적 업데이트: UI에 즉시 반영
-                            if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                            st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
-                            # 백그라운드 저장 시동
-                            update_db(a_id, "add", u_score, u_comment, u_count)
-                            st.session_state.action_cnt += 1
-                            st.rerun()
+                if st.session_state.logged_in:
+                    # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함
+                    ac = st.session_state.action_cnt
+                    pop_label = "수정" if is_w else "시청"
+                    
+                    with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
+                        if is_w:
+                            w_data = current_watched.get(a_id, {})
+                            u_score = st.slider("내 평점", 0.0, 5.0, round(float(w_data.get("rating", 5.0)), 1), 0.1, format="%.1f", key=f"score_edit_{a_id}_{ac}")
+                            u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"count_edit_{a_id}_{ac}")
+                            u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_edit_{a_id}_{ac}")
                             
-                        st.divider()
-                        if st.button("시청 기록 삭제", key=f"btn_delete_{a_id}_{ac}", use_container_width=True):
-                            # 낙관적 삭제
-                            if st.session_state.watched_list is not None:
-                                st.session_state.watched_list.pop(a_id, None)
-                            update_db(a_id, "remove")
-                            st.session_state.action_cnt += 1
-                            st.rerun()
-                    else:
-                        u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, key=f"score_new_{a_id}_{ac}")
-                        u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_new_{a_id}_{ac}")
-                        u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
-                        
-                        if st.button("저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
-                            # 낙관적 저장
-                            if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                            st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
-                            update_db(a_id, "add", u_score, u_comment, u_count)
-                            st.session_state.action_cnt += 1
-                            st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+                            if st.button("업데이트", key=f"btn_update_{a_id}_{ac}", use_container_width=True, type="primary"):
+                                # 낙관적 업데이트: UI에 즉시 반영
+                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
+                                # 백그라운드 저장 시동
+                                update_db(a_id, "add", u_score, u_comment, u_count)
+                                st.session_state.action_cnt += 1
+                                st.rerun()
+                                
+                            st.divider()
+                            if st.button("시청 기록 삭제", key=f"btn_delete_{a_id}_{ac}", use_container_width=True):
+                                # 낙관적 삭제
+                                if st.session_state.watched_list is not None:
+                                    st.session_state.watched_list.pop(a_id, None)
+                                update_db(a_id, "remove")
+                                st.session_state.action_cnt += 1
+                                st.rerun()
+                        else:
+                            u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, key=f"score_new_{a_id}_{ac}")
+                            u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_new_{a_id}_{ac}")
+                            u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
+                            
+                            if st.button("저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
+                                # 낙관적 저장
+                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
+                                update_db(a_id, "add", u_score, u_comment, u_count)
+                                st.session_state.action_cnt += 1
+                                st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
 
             st.write("") 
 

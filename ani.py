@@ -1276,7 +1276,7 @@ else:
             if st.session_state.logged_in:
                 # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함
                 ac = st.session_state.action_cnt
-                pop_label = "수정" if is_w else "봤어요"
+                pop_label = "수정" if is_w else "시청"
                 
                 with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
                     if is_w:

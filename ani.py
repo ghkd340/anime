@@ -1049,16 +1049,20 @@ with st.sidebar:
                         input.addEventListener("keydown", (e) => {
                             if (e.key === "Enter") input.blur();
                         });
+                        return;
                     }
                     
-                    // 2. 필터류 (년도, 분기, 장르, 시청여부): 키보드 팝업 및 커서 방지
+                    // 2. 필터류: 키보드 팝업 및 커서 방지
                     const container = input.closest('div[data-testid="stSelectbox"], div[data-testid="stMultiSelect"]');
                     if (container) {
                         const label = container.querySelector('label');
-                        if (label && ["년도", "분기", "포함 장르", "제외 장르", "시청 여부", "시간 단위"].some(text => label.textContent.trim() === text)) {
-                            // inputmode="none"은 모바일 키보드를 띄우지 않게 함
+                        const labelText = label ? label.textContent.trim() : "";
+                        
+                        // "정렬 방식"은 label_visibility="collapsed"여도 label 태그가 존재함
+                        const targetLabels = ["년도", "분기", "포함 장르", "제외 장르", "시청 여부", "시간 단위", "정렬 방식"];
+                        
+                        if (targetLabels.includes(labelText)) {
                             input.setAttribute('inputmode', 'none');
-                            // readonly는 텍스트 입력을 막고 커서(I-beam)가 생기는 것을 방지함
                             input.setAttribute('readonly', 'true');
                             input.style.cursor = 'pointer';
                         }
@@ -1066,10 +1070,18 @@ with st.sidebar:
                 });
             }
 
-            // Streamlit의 렌더링 타이밍을 고려하여 지연 실행 및 반복 실행
-            setTimeout(setupInputs, 500);
-            setTimeout(setupInputs, 1500);
-            setTimeout(setupInputs, 2500);
+            // 초기 실행
+            setupInputs();
+
+            // MutationObserver를 사용하여 팝오버 등 동적 요소 대응
+            const observer = new MutationObserver((mutations) => {
+                setupInputs();
+            });
+
+            observer.observe(window.parent.document.body, {
+                childList: true,
+                subtree: true
+            });
         </script>
     """, height=0)
 

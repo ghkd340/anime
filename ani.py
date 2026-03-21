@@ -28,13 +28,13 @@ st.markdown("""
 <style>
     .main .block-container { padding-top: 2rem; }
     .stImage > img, [data-testid="stImage"] img {
-        width: 100% !important; height: 360px !important; 
+        width: 100% !important; height: 500px !important; 
         object-fit: cover !important; border-radius: 12px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     .anime-title-box {
-        margin-top: 10px !important; height: 3rem !important; 
-        line-height: 1.5rem !important; font-size: 1rem;
+        margin-top: 15px !important; height: 3.5rem !important; 
+        line-height: 1.75rem !important; font-size: 1.1rem;
         font-weight: 700; overflow: hidden; display: -webkit-box;
         -webkit-line-clamp: 2; -webkit-box-orient: vertical;
         color: var(--text-color);
@@ -595,7 +595,7 @@ run_auth_shield()
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
     url = 'https://graphql.anilist.co'
     # relations는 상세 정보 로딩 시에만 필요하므로 메인 목록에서는 제외하여 속도 최적화
-    media_fields = "id title { native romaji } coverImage { large } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format"
+    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format"
     
     # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
@@ -1296,32 +1296,23 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                     st.session_state.has_next = end_idx < len(target_ids)
                     st.session_state.total_pages = (len(target_ids) + per_page - 1) // per_page
     else:
-        # 일반적인 API 페이징 처리 (최적화)
+        # 일반적인 API 페이징 처리
         if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"
         
-        # 목표 수량이 채워질 때까지 최대 5번 시도 (무한 루프 방지)
         attempts = 0
         while st.session_state.has_next and len(st.session_state.all_media) < st.session_state.page * 24 and attempts < 5:
             attempts += 1
-            # 안 본 작품만 필터링 시에는 한 번에 더 많이 가져와서 효율성 증대
-            fetch_size = 50 if (only_not_w or (only_w and has_active_filters)) else 24
+            fetch_size = 50 if (only_w or only_not_w) else 24
             
-            # AniList 500개 제한 대응: target_ids가 많을 경우 현재 페이지 근처의 500개만 사용
-            current_api_ids = None
-            if only_w:
-                if len(target_ids) <= 500:
-                    current_api_ids = target_ids
-                else:
-                    # 현재 api_page에 해당하는 구간의 500개를 선택
-                    start_idx = ((st.session_state.api_page - 1) * fetch_size) // 500 * 500
-                    current_api_ids = target_ids[start_idx : start_idx + 500]
-
+            # 필터가 있는 "본 작품만"은 id_in을 쓰지 않고 필터로 검색 후 클라이언트에서 거름
+            api_ids = None if (only_w and has_active_filters) else target_ids
+            
             data = fetch_anime(
                 st.session_state.api_page, 
                 api_sort, 
                 s_year, s_season, s_genres, s_ex_genres,
-                new_search if new_search else None,
-                ids=current_api_ids,
+                new_search,
+                ids=api_ids,
                 exclude_ids=exclude_ids,
                 include_adult=s_adult,
                 per_page=fetch_size
@@ -1330,13 +1321,55 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
             if data:
                 new_items = data['media']
                 
-                # 로컬 필터링 (API에서 다 못 거른 경우 대비)
+                # 시청 여부 로컬 필터링
+                if only_w and has_active_filters:
+                    new_items = [m for m in new_items if m['id'] in current_watched and current_watched[m['id']].get('rating', 0) >= s_rating]
+                elif only_not_w:
+                    new_items = [m for m in new_items if m['id'] not in current_watched]
+                
+                existing_ids = {m['id'] for m in st.session_state.all_media}
+                added_count = 0
+                for item in new_items:
+                    if item['id'] not in existing_ids:
+                        st.session_state.all_media.append(item)
+                        added_count += 1
+                
+                st.session_state.has_next = data['pageInfo']['hasNextPage']
+                st.session_state.api_page += 1
+                
+                if added_count == 0 and st.session_state.has_next: continue
+                else: break
+            else: break
+        # 일반적인 API 페이징 처리 (루프를 통해 부족한 수량 채움)
+        if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"
+        
+        # 목표 수량이 채워질 때까지 최대 5번 시도 (무한 루프 방지)
+        attempts = 0
+        while st.session_state.has_next and len(st.session_state.all_media) < st.session_state.page * 24 and attempts < 5:
+            attempts += 1
+            # 안 본 작품만 필터링 시에는 한 번에 50개씩 가져와서 효율성 증대
+            fetch_size = 50 if only_not_w else 24
+            
+            data = fetch_anime(
+                st.session_state.api_page, 
+                api_sort, 
+                s_year, s_season, s_genres, s_ex_genres,
+                new_search if new_search else None,
+                ids=target_ids,
+                exclude_ids=exclude_ids,
+                include_adult=s_adult,
+                per_page=fetch_size
+            )
+
+            if data:
+                new_items = data['media']
+                
+                # "안 본 작품만" 필터링 시 클라이언트 사이드에서 한 번 더 검증 (500개 제한 대비)
+                current_watched = st.session_state.watched_list or {}
                 if only_not_w:
                     new_items = [m for m in new_items if m['id'] not in current_watched]
-                elif only_w and has_active_filters:
-                    new_items = [m for m in new_items if m['id'] in current_watched and current_watched[m['id']].get('rating', 0) >= s_rating]
                 
-                # 정렬 보정
+                # "내 평점순"인 경우 가져온 결과 내에서 다시 한 번 정렬 (평점 -> 시청 횟수 순)
                 if st.session_state.sort_by == "내 평점순":
                     new_items.sort(key=lambda x: (
                         current_watched.get(x['id'], {}).get('rating', 0),
@@ -1355,6 +1388,7 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                 st.session_state.total_pages = data['pageInfo']['lastPage']
                 st.session_state.api_page += 1
                 
+                # 만약 이번 페이지에서 아무것도 추가되지 않았는데 다음 페이지가 있다면 즉시 다음 시도
                 if added_count == 0 and st.session_state.has_next:
                     continue
                 else:
@@ -1398,7 +1432,7 @@ else:
             current_watched = st.session_state.watched_list or {}
             with cols[j]:
                 st.markdown('<div class="anime-card-container">', unsafe_allow_html=True)
-                st.image(anime['coverImage']['large'], use_container_width=True)
+                st.image(anime['coverImage']['extraLarge'], use_container_width=True)
                 is_w = a_id in current_watched
                 if is_w:
                     w_data = current_watched.get(a_id, {})

@@ -188,9 +188,9 @@ st.markdown("""
         /* 팝오버 너비 모바일 강제 고정 (우선순위 상향) */
         div[data-testid="stPopoverBody"], 
         .main .block-container div[data-testid="stPopoverBody"] {
-            width: 260px !important;
-            max-width: 260px !important;
-            min-width: 260px !important;
+            width: 26px !important;
+            max-width: 26px !important;
+            min-width: 26px !important;
             left: 50% !important;
             transform: translateX(-50%) !important;
         }

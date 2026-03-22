@@ -129,6 +129,29 @@ st.markdown("""
         font-size: 0.85rem; font-weight: 600; white-space: nowrap;
         overflow: hidden; text-overflow: ellipsis; flex-grow: 1;
     }
+    /* 팝오버 너비 고정 및 장르 줄바꿈 설정 */
+    div[data-testid="stPopoverBody"] {
+        max-width: 280px !important;
+        min-width: 240px !important;
+    }
+    div[data-testid="stPopoverBody"] .stMarkdown {
+        word-break: normal !important;
+        white-space: normal !important;
+    }
+    .genre-tag {
+        display: inline-block;
+        background-color: rgba(128, 128, 128, 0.1);
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        padding: 0 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        height: 1.4rem;
+        line-height: 1.4rem;
+        margin-right: 4px;
+        margin-bottom: 4px;
+        white-space: nowrap;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -138,6 +161,14 @@ def get_oauth_storage():
     return {}
 
 oauth_storage = get_oauth_storage()
+
+# --- 글로벌 상수 ---
+KO_GENRE_MAP = {
+    "Action": "액션", "Adventure": "모험", "Comedy": "코미디", "Drama": "드라마", "Ecchi": "에치",
+    "Fantasy": "판타지", "Horror": "공포", "Mahou Shoujo": "마법소녀", "Mecha": "메카", 
+    "Music": "음악", "Mystery": "미스터리", "Psychological": "심리", "Romance": "로맨스", 
+    "Sci-Fi": "SF", "Slice of Life": "일상", "Sports": "스포츠", "Supernatural": "초자연", "Thriller": "스릴러"
+}
 
 # 2. Firebase 초기화 (Secrets 구조 보정)
 @st.cache_resource
@@ -595,7 +626,7 @@ run_auth_shield()
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
     url = 'https://graphql.anilist.co'
     # relations는 상세 정보 로딩 시에만 필요하므로 메인 목록에서는 제외하여 속도 최적화
-    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format"
+    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres"
     
     # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
@@ -764,13 +795,6 @@ with st.sidebar:
                 
                 series_count = len(set(find(aid) for aid in watched_ids))
 
-                ko_genre_map = {
-                    "Action": "액션", "Adventure": "모험", "Comedy": "코미디", "Drama": "드라마", "Ecchi": "에치",
-                    "Fantasy": "판타지", "Horror": "공포", "Mahou Shoujo": "마법소녀", "Mecha": "메카", 
-                    "Music": "음악", "Mystery": "미스터리", "Psychological": "심리", "Romance": "로맨스", 
-                    "Sci-Fi": "SF", "Slice of Life": "일상", "Sports": "스포츠", "Supernatural": "초자연", "Thriller": "스릴러"
-                }
-
                 for aid, info in current_watched.items():
                     meta = meta_map.get(aid)
                     rating = info.get('rating', 0)
@@ -779,7 +803,7 @@ with st.sidebar:
                         total_minutes += meta['episodes'] * meta['duration'] * count
                         for g in meta['genres']:
                             if g == "Hentai": continue
-                            ko_g = ko_genre_map.get(g, g)
+                            ko_g = KO_GENRE_MAP.get(g, g)
                             if ko_g not in genre_stats: genre_stats[ko_g] = [0, 0]
                             genre_stats[ko_g][0] += rating
                             genre_stats[ko_g][1] += 1
@@ -1483,6 +1507,12 @@ else:
                 # 상세 팝오버
                 with c1.popover("상세", use_container_width=True, key=f"pop_detail_{a_id}"):
                     st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
+                    
+                    # 장르 표시 추가
+                    genres = anime.get('genres', [])
+                    if genres:
+                        ko_genres = [f'<span class="genre-tag">{KO_GENRE_MAP.get(g, g)}</span>' for g in genres if g != "Hentai"]
+                        st.markdown(f"{' '.join(ko_genres)}", unsafe_allow_html=True)
                     
                     st.divider()
                     if st.button("🔍 이름으로 검색", key=f"btn_search_{a_id}", use_container_width=True, type="primary"):

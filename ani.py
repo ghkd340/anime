@@ -185,10 +185,14 @@ st.markdown("""
 
     /* 모바일 대응: 카드 버튼 및 팝오버 내 장르 버튼 가로 정렬 강제 및 최적화 */
     @media (max-width: 768px) {
-        /* 팝오버 너비 모바일 최적화 */
-        div[data-testid="stPopoverBody"] {
-            max-width: 85vw !important;
-            min-width: 200px !important;
+        /* 팝오버 너비 모바일 강제 고정 (우선순위 상향) */
+        div[data-testid="stPopoverBody"], 
+        .main .block-container div[data-testid="stPopoverBody"] {
+            width: 260px !important;
+            max-width: 260px !important;
+            min-width: 260px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
         }
         /* 카드 하단 3개 버튼 가로 고정 */
         div.anime-card-container div[data-testid="stHorizontalBlock"],

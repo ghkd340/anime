@@ -182,24 +182,6 @@ st.markdown("""
         white-space: nowrap !important;
         font-size: 0.7rem !important;
     }
-
-    /* 모바일에서도 상세/동영상/시청 버튼 3개가 한 줄에 나오도록 강제 */
-    @media (max-width: 768px) {
-        div.anime-card-container div[data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            gap: 4px !important;
-        }
-        div.anime-card-container div[data-testid="column"] {
-            flex: 1 1 0% !important;
-            min-width: 0 !important;
-        }
-        /* 모바일에서 버튼 내부 텍스트 크기 축소 */
-        div.anime-card-container button p {
-            font-size: 0.7rem !important;
-        }
-    }
 </style>
 """, unsafe_allow_html=True)
 

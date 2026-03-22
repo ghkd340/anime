@@ -183,24 +183,36 @@ st.markdown("""
         font-size: 0.7rem !important;
     }
 
-    /* 모바일에서도 상세/동영상/시청 버튼 및 장르 버튼 3열 가로 정렬 강제 */
+    /* 모바일 대응: 카드 버튼 및 팝오버 내 장르 버튼 가로 정렬 강제 및 최적화 */
     @media (max-width: 768px) {
+        /* 팝오버 너비 모바일 최적화 */
+        div[data-testid="stPopoverBody"] {
+            max-width: 85vw !important;
+            min-width: 200px !important;
+        }
+        /* 카드 하단 3개 버튼 가로 고정 */
         div.anime-card-container div[data-testid="stHorizontalBlock"],
+        /* 상세 팝오버 내 장르 버튼 가로 고정 */
         div[data-testid="stPopoverBody"] div[data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            gap: 4px !important;
+            gap: 2px !important;
         }
         div.anime-card-container div[data-testid="column"],
         div[data-testid="stPopoverBody"] div[data-testid="column"] {
             flex: 1 1 0% !important;
             min-width: 0 !important;
         }
+        /* 모바일 장르 버튼 슬림화 */
+        div[data-testid="stPopoverBody"] [data-testid="column"] button {
+            padding: 0px 1px !important;
+            letter-spacing: -0.5px !important;
+        }
         /* 모바일에서 버튼 내부 텍스트 크기 축소 */
         div.anime-card-container button p,
         div[data-testid="stPopoverBody"] button p {
-            font-size: 0.7rem !important;
+            font-size: 0.65rem !important;
         }
     }
 </style>

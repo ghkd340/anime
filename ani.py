@@ -1506,15 +1506,14 @@ else:
                 
                 # 상세 팝오버
                 with c1.popover("상세", use_container_width=True, key=f"pop_detail_{a_id}"):
-                    st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
-                    
                     # 장르 표시 추가
                     genres = anime.get('genres', [])
                     if genres:
                         ko_genres = [f'<span class="genre-tag">{KO_GENRE_MAP.get(g, g)}</span>' for g in genres if g != "Hentai"]
                         st.markdown(f"{' '.join(ko_genres)}", unsafe_allow_html=True)
+
+                    st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
                     
-                    st.divider()
                     if st.button("🔍 이름으로 검색", key=f"btn_search_{a_id}", use_container_width=True, type="primary"):
                         title = anime['title']['native'] or anime['title']['romaji']
                         # URL 파라미터만 갱신 (위젯 상태는 다음 런의 최상단 동기화 로직에서 처리)

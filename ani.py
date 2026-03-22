@@ -9,6 +9,7 @@ import random
 import threading
 import concurrent.futures
 import extra_streamlit_components as stx
+import urllib.parse
 
 # 구글 인증 관련 라이브러리
 from google_auth_oauthlib.flow import Flow
@@ -151,6 +152,35 @@ st.markdown("""
         margin-right: 4px;
         margin-bottom: 4px;
         white-space: nowrap;
+        color: inherit !important;
+        text-decoration: none !important;
+        transition: all 0.2s;
+    }
+    .genre-tag:hover {
+        background-color: rgba(255, 75, 75, 0.1) !important;
+        border-color: rgba(255, 75, 75, 0.3) !important;
+        color: #ff4b4b !important;
+        cursor: pointer !important;
+    }
+    /* 상세 팝오버 내 장르 버튼 크기 축소 및 줄바꿈 방지 */
+    div[data-testid="stPopoverBody"] button {
+        padding: 0px 2px !important;
+        min-height: 1.7rem !important;
+        height: 1.7rem !important;
+        font-size: 0.7rem !important;
+        line-height: 1 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+    }
+    div[data-testid="stPopoverBody"] [data-testid="column"] {
+        padding: 1px !important;
+    }
+    div[data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"] {
+        gap: 4px !important;
+    }
+    div[data-testid="stPopoverBody"] button div p {
+        white-space: nowrap !important;
+        font-size: 0.7rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -490,7 +520,18 @@ if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
 if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
 if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 if 'action_cnt' not in st.session_state: st.session_state.action_cnt = 0
-if 'time_unit' not in st.session_state: st.session_state.time_unit = "시간"
+if 'genre_filter' not in st.session_state: st.session_state.genre_filter = []
+if 'genre_to_add' not in st.session_state: st.session_state.genre_to_add = None
+
+# --- 장르 추가 대기열 처리 (위젯 생성 전 확실히 할당) ---
+if st.session_state.genre_to_add:
+    new_g = st.session_state.genre_to_add
+    current_g = list(st.session_state.genre_filter) # 복사본 생성
+    if new_g not in current_g:
+        current_g.append(new_g)
+        # 리스트 자체를 새로 할당해야 위젯이 인식함
+        st.session_state.genre_filter = current_g
+    st.session_state.genre_to_add = None # 대기열 비우기
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
@@ -1507,10 +1548,19 @@ else:
                 # 상세 팝오버
                 with c1.popover("상세", use_container_width=True, key=f"pop_detail_{a_id}"):
                     # 장르 표시 추가
-                    genres = anime.get('genres', [])
+                    genres = [g for g in anime.get('genres', []) if g != "Hentai"]
                     if genres:
-                        ko_genres = [f'<span class="genre-tag">{KO_GENRE_MAP.get(g, g)}</span>' for g in genres if g != "Hentai"]
-                        st.markdown(f"{' '.join(ko_genres)}", unsafe_allow_html=True)
+                        # 3열로 버튼 배치 (간격 축소)
+                        g_cols = st.columns(3, gap="small")
+                        for idx, g in enumerate(genres):
+                            ko_g = KO_GENRE_MAP.get(g, g)
+                            with g_cols[idx % 3]:
+                                if st.button(ko_g, key=f"g_btn_{a_id}_{g}", use_container_width=True):
+                                    # 직접 수정 대신 대기열에 추가 후 리런
+                                    if ko_g not in st.session_state.genre_filter:
+                                        st.session_state.genre_to_add = ko_g
+                                        st.rerun()
+                        st.write("") # 간격 조절
 
                     st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
                     

@@ -142,14 +142,14 @@ st.markdown("""
         display: inline-block;
         background-color: rgba(128, 128, 128, 0.1);
         border: 1px solid rgba(128, 128, 128, 0.2);
-        padding: 0 8px;
+        padding: 0 10px;
         border-radius: 4px;
-        font-size: 0.75rem;
+        font-size: 0.95rem;
         font-weight: 500;
-        height: 1.4rem;
-        line-height: 1.4rem;
-        margin-right: 4px;
-        margin-bottom: 4px;
+        height: 1.8rem;
+        line-height: 1.8rem;
+        margin-right: 6px;
+        margin-bottom: 6px;
         white-space: nowrap;
     }
 </style>

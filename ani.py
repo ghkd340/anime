@@ -1541,8 +1541,9 @@ else:
                 else:
                     comment_html = '<div class="empty-comment-box"></div>'
 
-                # 5. 통합 렌더링 (이미지는 API 필드에 맞춰 large 사용)
-                st.image(anime['coverImage']['large'], use_container_width=True)
+                # 5. 통합 렌더링 (안전하게 이미지 경로 획득하여 KeyError 방지)
+                cover_img = anime.get('coverImage', {}).get('large') or anime.get('coverImage', {}).get('extraLarge')
+                st.image(cover_img, use_container_width=True)
                 st.markdown(f"""
                 <div class="anime-card-container">
                     {badge_html}

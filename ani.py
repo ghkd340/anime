@@ -795,83 +795,80 @@ with st.sidebar:
         # 현재 시청 목록의 상태를 나타내는 해시 생성 (ID, 평점, 시청 횟수 포함하여 변경 시 통계 재계산)
         current_hash = hash(frozenset((k, v.get('rating', 0), v.get('count', 1)) for k, v in current_watched.items()))
         
-        if st.session_state.stats_cache["hash"] != current_hash and watched_count > 0:
-            stats_pbar = st.empty()
-            with st.spinner("통계 분석 중..."):
-                avg_score = sum(v.get('rating', 0) for v in current_watched.values()) / watched_count
-                watched_ids = [int(aid) for aid in current_watched.keys()]
-                meta_map = get_watched_metadata(watched_ids, p_bar_container=stats_pbar)
-                stats_pbar.empty() # 작업 완료 후 표시줄 제거
-                
-                total_minutes = 0
-                genre_stats = {} 
-                
-                # 시리즈 그룹화 (DSU)
-                parent = {aid: aid for aid in watched_ids}
-                def find(i):
-                    if parent[i] == i: return i
-                    parent[i] = find(parent[i])
-                    return parent[i]
-                def union(i, j):
-                    root_i = find(i); root_j = find(j)
-                    if root_i != root_j: parent[root_i] = root_j
-
-                related_to_watched = {}
-                valid_rel_types = ['PREQUEL', 'SEQUEL', 'PARENT','SUMMARY']
-                
-                for aid in watched_ids:
-                    meta = meta_map.get(aid)
-                    if not meta: continue
-                    if aid not in related_to_watched: related_to_watched[aid] = set()
-                    related_to_watched[aid].add(aid)
-                    for edge in meta.get('relations', []):
-                        rel_id = edge['node']['id']
-                        if edge['relationType'] in valid_rel_types:
-                            if rel_id not in related_to_watched: related_to_watched[rel_id] = set()
-                            related_to_watched[rel_id].add(aid)
-                
-                for rel_id, aids in related_to_watched.items():
-                    aids_list = list(aids)
-                    for i in range(len(aids_list) - 1):
-                        union(aids_list[i], aids_list[i+1])
-                
-                series_count = len(set(find(aid) for aid in watched_ids))
-
-                for aid, info in current_watched.items():
-                    meta = meta_map.get(aid)
-                    rating = info.get('rating', 0)
-                    if meta:
-                        count = info.get('count', 1)
-                        total_minutes += meta['episodes'] * meta['duration'] * count
-                        for g in meta['genres']:
-                            if g == "Hentai": continue
-                            ko_g = KO_GENRE_MAP.get(g, g)
-                            if ko_g not in genre_stats: genre_stats[ko_g] = [0, 0]
-                            genre_stats[ko_g][0] += rating
-                            genre_stats[ko_g][1] += 1
-                
-                sorted_genres = sorted(genre_stats.items(), key=lambda x: x[1][1], reverse=True)
-                
-                # 시간 포맷팅
-                if total_minutes >= 1440:
-                    days = total_minutes // 1440
-                    hours = (total_minutes % 1440) // 60
-                    t_str = f"{days}일 {hours}시간"
-                elif total_minutes >= 60:
-                    hours = total_minutes // 60
-                    mins = total_minutes % 60
-                    t_str = f"{hours}시간 {mins}분"
-                else:
-                    t_str = f"{total_minutes}분"
+        if st.session_state.stats_cache["hash"] != current_hash:
+            if watched_count > 0:
+                stats_pbar = st.empty()
+                with st.spinner("통계 분석 중..."):
+                    avg_score = sum(v.get('rating', 0) for v in current_watched.values()) / watched_count
+                    watched_ids = [int(aid) for aid in current_watched.keys()]
+                    meta_map = get_watched_metadata(watched_ids, p_bar_container=stats_pbar)
+                    stats_pbar.empty() # 작업 완료 후 표시줄 제거
                     
-                # 결과 캐싱 (원천 데이터인 total_minutes를 함께 저장)
+                    total_minutes = 0
+                    genre_stats = {} 
+                    
+                    # 시리즈 그룹화 (DSU)
+                    parent = {aid: aid for aid in watched_ids}
+                    def find(i):
+                        if parent[i] == i: return i
+                        parent[i] = find(parent[i])
+                        return parent[i]
+                    def union(i, j):
+                        root_i = find(i); root_j = find(j)
+                        if root_i != root_j: parent[root_i] = root_j
+
+                    related_to_watched = {}
+                    valid_rel_types = ['PREQUEL', 'SEQUEL', 'PARENT','SUMMARY']
+                    
+                    for aid in watched_ids:
+                        meta = meta_map.get(aid)
+                        if not meta: continue
+                        if aid not in related_to_watched: related_to_watched[aid] = set()
+                        related_to_watched[aid].add(aid)
+                        for edge in meta.get('relations', []):
+                            rel_id = edge['node']['id']
+                            if edge['relationType'] in valid_rel_types:
+                                if rel_id not in related_to_watched: related_to_watched[rel_id] = set()
+                                related_to_watched[rel_id].add(aid)
+                    
+                    for rel_id, aids in related_to_watched.items():
+                        aids_list = list(aids)
+                        for i in range(len(aids_list) - 1):
+                            union(aids_list[i], aids_list[i+1])
+                    
+                    series_count = len(set(find(aid) for aid in watched_ids))
+
+                    for aid, info in current_watched.items():
+                        meta = meta_map.get(aid)
+                        rating = info.get('rating', 0)
+                        if meta:
+                            count = info.get('count', 1)
+                            total_minutes += meta['episodes'] * meta['duration'] * count
+                            for g in meta['genres']:
+                                if g == "Hentai": continue
+                                ko_g = KO_GENRE_MAP.get(g, g)
+                                if ko_g not in genre_stats: genre_stats[ko_g] = [0, 0]
+                                genre_stats[ko_g][0] += rating
+                                genre_stats[ko_g][1] += 1
+                    
+                    sorted_genres = sorted(genre_stats.items(), key=lambda x: x[1][1], reverse=True)
+                        
+                    # 결과 캐싱
+                    st.session_state.stats_cache = {
+                        "hash": current_hash,
+                        "data": {
+                            "avg_score": avg_score,
+                            "series_count": series_count,
+                            "total_minutes": total_minutes,
+                            "sorted_genres": sorted_genres
+                        }
+                    }
+            else:
+                # 시청 기록이 0개일 때 즉시 초기화
                 st.session_state.stats_cache = {
                     "hash": current_hash,
                     "data": {
-                        "avg_score": avg_score,
-                        "series_count": series_count,
-                        "total_minutes": total_minutes,
-                        "sorted_genres": sorted_genres
+                        "avg_score": 0, "series_count": 0, "total_minutes": 0, "sorted_genres": []
                     }
                 }
 

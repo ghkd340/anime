@@ -1368,11 +1368,12 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                     st.session_state.has_next = end_idx < len(target_ids)
                     st.session_state.total_pages = (len(target_ids) + per_page - 1) // per_page
     else:
-        # 일반적인 API 페이징 처리
+        # 일반적인 API 페이징 처리 (루프 통합 및 최적화)
         if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"
         
+        # 목표 수량이 채워질 때까지 시도 (최대 3회로 제한하여 스피닝 방지)
         attempts = 0
-        while st.session_state.has_next and len(st.session_state.all_media) < st.session_state.page * 24 and attempts < 5:
+        while st.session_state.has_next and len(st.session_state.all_media) < st.session_state.page * 24 and attempts < 3:
             attempts += 1
             fetch_size = 50 if (only_w or only_not_w) else 24
             
@@ -1409,58 +1410,6 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                 st.session_state.has_next = data['pageInfo']['hasNextPage']
                 st.session_state.api_page += 1
                 
-                if added_count == 0 and st.session_state.has_next: continue
-                else: break
-            else: break
-        # 일반적인 API 페이징 처리 (루프를 통해 부족한 수량 채움)
-        if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"
-        
-        # 목표 수량이 채워질 때까지 최대 5번 시도 (무한 루프 방지)
-        attempts = 0
-        while st.session_state.has_next and len(st.session_state.all_media) < st.session_state.page * 24 and attempts < 5:
-            attempts += 1
-            # 안 본 작품만 필터링 시에는 한 번에 50개씩 가져와서 효율성 증대
-            fetch_size = 50 if only_not_w else 24
-            
-            data = fetch_anime(
-                st.session_state.api_page, 
-                api_sort, 
-                s_year, s_season, s_genres, s_ex_genres,
-                new_search if new_search else None,
-                ids=target_ids,
-                exclude_ids=exclude_ids,
-                include_adult=s_adult,
-                per_page=fetch_size
-            )
-
-            if data:
-                new_items = data['media']
-                
-                # "안 본 작품만" 필터링 시 클라이언트 사이드에서 한 번 더 검증 (500개 제한 대비)
-                current_watched = st.session_state.watched_list or {}
-                if only_not_w:
-                    new_items = [m for m in new_items if m['id'] not in current_watched]
-                
-                # "내 평점순"인 경우 가져온 결과 내에서 다시 한 번 정렬 (평점 -> 시청 횟수 순)
-                if st.session_state.sort_by == "내 평점순":
-                    new_items.sort(key=lambda x: (
-                        current_watched.get(x['id'], {}).get('rating', 0),
-                        current_watched.get(x['id'], {}).get('count', 1)
-                    ), reverse=True)
-                
-                # 중복 제거 및 추가
-                existing_ids = {m['id'] for m in st.session_state.all_media}
-                added_count = 0
-                for item in new_items:
-                    if item['id'] not in existing_ids:
-                        st.session_state.all_media.append(item)
-                        added_count += 1
-                
-                st.session_state.has_next = data['pageInfo']['hasNextPage']
-                st.session_state.total_pages = data['pageInfo']['lastPage']
-                st.session_state.api_page += 1
-                
-                # 만약 이번 페이지에서 아무것도 추가되지 않았는데 다음 페이지가 있다면 즉시 다음 시도
                 if added_count == 0 and st.session_state.has_next:
                     continue
                 else:

@@ -162,8 +162,8 @@ st.markdown("""
         color: #ff4b4b !important;
         cursor: pointer !important;
     }
-    /* 상세 팝오버 내 장르 버튼 크기 축소 및 줄바꿈 방지 */
-    div[data-testid="stPopoverBody"] button {
+    /* 상세 팝오버 내 장르 버튼(컬럼 내부) 크기 축소 및 줄바꿈 방지 */
+    div[data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"] button {
         padding: 0px 2px !important;
         min-height: 1.7rem !important;
         height: 1.7rem !important;
@@ -178,7 +178,7 @@ st.markdown("""
     div[data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"] {
         gap: 4px !important;
     }
-    div[data-testid="stPopoverBody"] button div p {
+    div[data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"] button div p {
         white-space: nowrap !important;
         font-size: 0.7rem !important;
     }

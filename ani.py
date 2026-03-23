@@ -542,6 +542,9 @@ def run_auth_shield():
 
     # 2. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
+        # 로그인된 상태인데 주소창에 인증 파라미터가 남아있다면 제거
+        if "code" in st.query_params or "state" in st.query_params:
+            st.query_params.clear()
         return True
     
     # 3. 구글 OAuth 콜백 처리 (새로운 로그인 시도 시)
@@ -602,13 +605,19 @@ def run_auth_shield():
                     # 시청 목록 및 설정 즉시 로드
                     sync_user_data_to_session(user_info["email"])
                     
-                    # 쿠키가 저장될 시간을 아주 잠시 기다린 후 새로고침
+                    # 쿠키가 저장될 시간을 아주 잠시 기다린 후 새로고침 (파라미터 제거)
                     import time
                     time.sleep(0.5)
                     st.query_params.clear()
                     st.rerun()
             except Exception as e:
                 st.error(f"로그인 처리 중 오류 발생: {e}")
+                # 오류 발생 시에도 일단 파라미터는 지워서 무한 루프 방지
+                st.query_params.clear()
+        else:
+            # 코드가 있는데 검증자가 없으면 (이미 처리되었거나 세션 만료) 주소창 청소
+            st.query_params.clear()
+            st.rerun()
         
     # 4. 쿠키 기반 세션 복구 확인 (기존 로그인된 경우)
     user_key = "anime_user_session"

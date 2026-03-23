@@ -676,8 +676,8 @@ run_auth_shield()
 @st.cache_data(ttl=3600)
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
     url = 'https://graphql.anilist.co'
-    # relations는 상세 정보 로딩 시에만 필요하므로 메인 목록에서는 제외하여 속도 최적화
-    media_fields = "id title { native romaji } coverImage { extraLarge } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres"
+    # 이미지 해상도를 large로 낮추어 로딩 속도 향상 (태블릿/모바일 최적화)
+    media_fields = "id title { native romaji } coverImage { large } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres"
     
     # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
@@ -1503,54 +1503,59 @@ else:
             a_id = anime['id']
             current_watched = st.session_state.watched_list or {}
             with cols[j]:
-                st.markdown('<div class="anime-card-container">', unsafe_allow_html=True)
-                st.image(anime['coverImage']['extraLarge'], use_container_width=True)
+                # --- 2차 최적화: 모든 정보를 하나의 HTML 블록으로 통합 렌더링 ---
                 is_w = a_id in current_watched
+                w_data = current_watched.get(a_id, {}) if is_w else {}
+                
+                # 1. 뱃지 HTML
                 if is_w:
-                    w_data = current_watched.get(a_id, {})
                     user_rating = w_data.get("rating", 5.0)
                     user_count = w_data.get("count", 1)
                     count_str = f" ({user_count}회)" if user_count > 1 else ""
-                    st.markdown(f'<div class="watched-badge">✓ {user_rating}점{count_str}</div>', unsafe_allow_html=True)
-                else: st.markdown('<div style="height:1.5rem; margin-bottom:5px;"></div>', unsafe_allow_html=True)
+                    badge_html = f'<div class="watched-badge">✓ {user_rating}점{count_str}</div>'
+                else:
+                    badge_html = '<div style="height:1.5rem; margin-bottom:5px;"></div>'
 
-                st.markdown(f"<div class='anime-title-box'>{anime['title']['native'] or anime['title']['romaji']}</div>", unsafe_allow_html=True)
-                
-                # 포맷 매핑
-                f_map = {
-                    "TV": "TV", "TV_SHORT": "TV (Short)", "MOVIE": "영화", 
-                    "SPECIAL": "특별편", "OVA": "OVA", "ONA": "ONA", "MUSIC": "뮤직"
-                }
+                # 2. 제목 및 포맷 정보
+                title = anime['title']['native'] or anime['title']['romaji']
+                f_map = {"TV": "TV", "TV_SHORT": "TV (Short)", "MOVIE": "영화", "SPECIAL": "특별편", "OVA": "OVA", "ONA": "ONA", "MUSIC": "뮤직"}
                 a_format = f_map.get(anime.get('format'), anime.get('format') or "Unknown")
-                st.markdown(f"<div style='font-size: 0.75rem; color: #888; margin-top: -10px; margin-bottom: 5px;'>{a_format}</div>", unsafe_allow_html=True)
-
+                
+                # 3. 년도/분기 및 평점 별점
                 s_map = {"WINTER": "1분기", "SPRING": "2분기", "SUMMER": "3분기", "FALL": "4분기"}
                 a_year = anime.get('seasonYear') or "미정"
                 a_season = s_map.get(anime.get('season'), "")
-                st.markdown(f"<div class='anime-info-box'>📅 {a_year}년 {a_season}</div>", unsafe_allow_html=True)
-
+                
                 raw_score = anime.get('averageScore')
                 if raw_score:
                     score_5 = round(raw_score / 20, 1)
-                    full_stars = int(score_5)
-                    stars = "★" * full_stars + "☆" * (5 - full_stars)
+                    stars = "★" * int(score_5) + "☆" * (5 - int(score_5))
                     score_html = f"<div class='score-box'>{stars} {score_5}</div>"
                 else:
                     score_html = "<div class='score-box' style='color:#bbb;'>☆☆☆☆☆ 0.0</div>"
 
-                st.markdown(score_html, unsafe_allow_html=True)
-
-                if is_w:
-                    w_data = current_watched.get(a_id, {})
-                    user_comment = w_data.get("comment", "")
-                    if user_comment:
-                        st.markdown(f'<div class="user-comment-box">"{user_comment}"</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown('<div class="empty-comment-box"></div>', unsafe_allow_html=True)
+                # 4. 코멘트 영역
+                user_comment = w_data.get("comment", "")
+                if is_w and user_comment:
+                    comment_html = f'<div class="user-comment-box">"{user_comment}"</div>'
                 else:
-                    st.markdown('<div class="empty-comment-box"></div>', unsafe_allow_html=True)
+                    comment_html = '<div class="empty-comment-box"></div>'
+
+                # 5. 통합 렌더링 (이미지는 API 필드에 맞춰 large 사용)
+                st.image(anime['coverImage']['large'], use_container_width=True)
+                st.markdown(f"""
+                <div class="anime-card-container">
+                    {badge_html}
+                    <div class='anime-title-box'>{title}</div>
+                    <div style='font-size: 0.75rem; color: #888; margin-top: -10px; margin-bottom: 5px;'>{a_format}</div>
+                    <div class='anime-info-box'>📅 {a_year}년 {a_season}</div>
+                    {score_html}
+                    {comment_html}
+                </div>
+                """, unsafe_allow_html=True)
 
                 c1, c2, c3 = st.columns(3, gap="small")
+
                 
                 # 상세 팝오버
                 with c1.popover("상세", use_container_width=True, key=f"pop_detail_{a_id}"):

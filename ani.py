@@ -522,6 +522,7 @@ if 'total_pages' not in st.session_state: st.session_state.total_pages = 1
 if 'action_cnt' not in st.session_state: st.session_state.action_cnt = 0
 if 'genre_filter' not in st.session_state: st.session_state.genre_filter = []
 if 'genre_to_add' not in st.session_state: st.session_state.genre_to_add = None
+if 'time_unit' not in st.session_state: st.session_state.time_unit = "시간"
 
 # --- 장르 추가 대기열 처리 (위젯 생성 전 확실히 할당) ---
 if st.session_state.genre_to_add:

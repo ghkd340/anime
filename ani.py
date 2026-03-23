@@ -792,8 +792,8 @@ with st.sidebar:
         if "stats_cache" not in st.session_state:
             st.session_state.stats_cache = {"hash": None, "data": None}
             
-        # 현재 시청 목록의 상태를 나타내는 해시 생성 (ID 목록 + 개수)
-        current_hash = hash(frozenset(current_watched.keys())) + watched_count
+        # 현재 시청 목록의 상태를 나타내는 해시 생성 (ID, 평점, 시청 횟수 포함하여 변경 시 통계 재계산)
+        current_hash = hash(frozenset((k, v.get('rating', 0), v.get('count', 1)) for k, v in current_watched.items()))
         
         if st.session_state.stats_cache["hash"] != current_hash and watched_count > 0:
             stats_pbar = st.empty()

@@ -674,7 +674,7 @@ run_auth_shield()
 
 # 6. API 호출 (캐싱)
 @st.cache_data(ttl=3600)
-def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
+def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=16):
     url = 'https://graphql.anilist.co'
     # 이미지 해상도를 large로 낮추어 로딩 속도 향상 (태블릿/모바일 최적화)
     media_fields = "id title { native romaji } coverImage { large } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres"
@@ -1504,71 +1504,55 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
 
-                c1, c2, c3 = st.columns(3, gap="small")
-
-                
-                # 상세 팝오버
-                with c1.popover("상세", use_container_width=True, key=f"pop_detail_{a_id}"):
-                    # 장르 표시 추가
+                # 메뉴 팝오버 (3개의 버튼과 컬럼을 하나로 통합하여 성능 최적화)
+                with st.popover("⚙️ 메뉴", use_container_width=True, key=f"pop_menu_{a_id}"):
+                    # 1. 상세 정보 & 장르
+                    st.markdown("**📋 상세 정보**")
                     genres = [g for g in anime.get('genres', []) if g != "Hentai"]
                     if genres:
-                        # 3열로 버튼 배치 (간격 축소)
-                        g_cols = st.columns(3, gap="small")
+                        g_cols = st.columns(2, gap="small")
                         for idx, g in enumerate(genres):
                             ko_g = KO_GENRE_MAP.get(g, g)
-                            with g_cols[idx % 3]:
+                            with g_cols[idx % 2]:
                                 if st.button(ko_g, key=f"g_btn_{a_id}_{g}", use_container_width=True):
-                                    # 직접 수정 대신 대기열에 추가 후 리런
                                     if ko_g not in st.session_state.genre_filter:
                                         st.session_state.genre_to_add = ko_g
                                         st.rerun()
-                        st.write("") # 간격 조절
-
-                    st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
                     
-                    if st.button("🔍 이름으로 검색", key=f"btn_search_{a_id}", use_container_width=True, type="primary"):
-                        title = anime['title']['native'] or anime['title']['romaji']
-                        # URL 파라미터만 갱신 (위젯 상태는 다음 런의 최상단 동기화 로직에서 처리)
+                    st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
+                    if st.button("🔍 이름으로 검색", key=f"btn_search_{a_id}", use_container_width=True):
                         st.query_params["q"] = title
-                        # 목록 초기화 및 페이지 리셋
                         st.session_state.all_media = []
                         st.session_state.page = 1
                         st.rerun()
-                
-                # 예고편 버튼
-                trailer = anime.get('trailer')
-                if trailer and trailer.get('site') == 'youtube':
-                    with c2.popover("🎬", use_container_width=True, key=f"trailer_{a_id}"):
-                        st.video(f"https://www.youtube.com/watch?v={trailer['id']}")
-                else:
-                    c2.button("🎬", disabled=True, use_container_width=True, help="예고편 정보가 없습니다.", key=f"no_trailer_{a_id}")
 
-                if st.session_state.logged_in:
-                    # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함
-                    ac = st.session_state.action_cnt
-                    pop_label = "수정" if is_w else "시청"
-                    
-                    with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
+                    # 2. 예고편
+                    st.divider()
+                    st.markdown("**🎬 예고편**")
+                    trailer = anime.get('trailer')
+                    if trailer and trailer.get('site') == 'youtube':
+                        st.video(f"https://www.youtube.com/watch?v={trailer['id']}")
+                    else:
+                        st.caption("예고편 정보가 없습니다.")
+
+                    # 3. 시청 관리 (로그인 시)
+                    if st.session_state.logged_in:
+                        st.divider()
+                        ac = st.session_state.action_cnt
+                        st.markdown(f"**{'✍️ 시청 기록 수정' if is_w else '➕ 시청 기록 추가'}**")
                         if is_w:
-                            w_data = current_watched.get(a_id, {})
                             u_score = st.slider("내 평점", 0.0, 5.0, round(float(w_data.get("rating", 5.0)), 1), 0.1, format="%.1f", key=f"score_edit_{a_id}_{ac}")
                             u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"count_edit_{a_id}_{ac}")
                             u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_edit_{a_id}_{ac}")
                             
-                            if st.button("업데이트", key=f"btn_update_{a_id}_{ac}", use_container_width=True, type="primary"):
-                                # 낙관적 업데이트: UI에 즉시 반영
-                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                            c_up, c_del = st.columns(2)
+                            if c_up.button("업데이트", key=f"btn_update_{a_id}_{ac}", use_container_width=True, type="primary"):
                                 st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
-                                # 백그라운드 저장 시동
                                 update_db(a_id, "add", u_score, u_comment, u_count)
                                 st.session_state.action_cnt += 1
                                 st.rerun()
-                                
-                            st.divider()
-                            if st.button("시청 기록 삭제", key=f"btn_delete_{a_id}_{ac}", use_container_width=True):
-                                # 낙관적 삭제
-                                if st.session_state.watched_list is not None:
-                                    st.session_state.watched_list.pop(a_id, None)
+                            if c_del.button("기록 삭제", key=f"btn_delete_{a_id}_{ac}", use_container_width=True):
+                                st.session_state.watched_list.pop(a_id, None)
                                 update_db(a_id, "remove")
                                 st.session_state.action_cnt += 1
                                 st.rerun()
@@ -1576,9 +1560,7 @@ else:
                             u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, key=f"score_new_{a_id}_{ac}")
                             u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_new_{a_id}_{ac}")
                             u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
-                            
-                            if st.button("저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
-                                # 낙관적 저장
+                            if st.button("기록 저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
                                 if st.session_state.watched_list is None: st.session_state.watched_list = {}
                                 st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
                                 update_db(a_id, "add", u_score, u_comment, u_count)

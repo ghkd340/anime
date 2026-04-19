@@ -1479,6 +1479,12 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
 anime_list = st.session_state.all_media
 total_loaded = len(anime_list)
 
+# 정렬 방식 변경 콜백
+def on_sort_change():
+    st.session_state.all_media = []
+    st.session_state.page = 1
+    st.session_state.api_page = 1
+
 # 상단 헤더 및 정렬 UI
 h_col1, h_col2 = st.columns([4, 1])
 with h_col1:
@@ -1495,7 +1501,18 @@ with h_col1:
 with h_col2:
     st.write("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     if not st.session_state.is_random_mode:
-        st.selectbox("정렬 방식", list(sort_map.keys()), key="sort_by", label_visibility="collapsed")
+        # sort_map에 현재 세션의 정렬 방식이 포함되어 있는지 확인
+        available_sorts = list(sort_map.keys())
+        current_sort = st.session_state.sort_by
+        if current_sort not in available_sorts:
+            current_sort = available_sorts[0]
+            st.session_state.sort_by = current_sort
+            
+        st.selectbox("정렬 방식", available_sorts, 
+                     index=available_sorts.index(current_sort),
+                     key="sort_selector",
+                     on_change=lambda: st.session_state.update({"sort_by": st.session_state.sort_selector}),
+                     label_visibility="collapsed")
 
 st.divider()
 

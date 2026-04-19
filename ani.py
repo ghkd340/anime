@@ -942,7 +942,7 @@ with st.sidebar:
                 </div>
                 <div style="flex: 1; text-align: right;">
                     <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">평균 평점</div>
-                    <div style="font-size: 1.15rem; color: #f39c12; font-weight: bold; margin-top: 2px;">★ {avg_score:.1f}</div>
+                    <div style="font-size: 1.15rem; color: #f39c12; font-weight: bold; margin-top: 2px;"> {avg_score:.2f}</div>
                 </div>
             </div>
         </div>

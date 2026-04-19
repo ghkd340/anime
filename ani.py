@@ -536,32 +536,23 @@ if st.session_state.genre_to_add:
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
-    # 1. 로그아웃 파라미터 처리 (새로고침 시 자동 로그인 방지의 핵심)
+    # 1. URL에 logout=true가 있으면 자동 로그인 차단
     if st.query_params.get("logout") == "true":
-        # 불필요한 구글 인증 파라미터가 섞여 있다면 정리 (주소창 미관 및 보안)
-        redundant_params = ["state", "code", "scope", "authuser", "prompt", "iss"]
-        changed = False
-        for p in redundant_params:
-            if p in st.query_params:
-                del st.query_params[p]
-                changed = True
-        if changed:
-            st.rerun()
         return False
 
     # 2. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
-        # 로그인 상태인데 주소창에 불필요한 값(logout, code, state 등)이 있다면 즉시 제거
-        if st.query_params:
+        # 로그인된 상태인데 주소창에 인증 파라미터가 남아있다면 제거
+        if "code" in st.query_params or "state" in st.query_params:
             st.query_params.clear()
-            st.rerun()
         return True
     
-    # 3. 구글 OAuth 콜백 처리
+    # 3. 구글 OAuth 콜백 처리 (새로운 로그인 시도 시)
     auth_code = st.query_params.get("code")
     auth_state = st.query_params.get("state")
     
     if auth_code and auth_state:
+        # oauth_storage에서 code_verifier를 꺼내오면서 즉시 삭제 (중복 사용 방지)
         code_verifier = oauth_storage.pop(auth_state, None)
         if code_verifier:
             try:
@@ -569,75 +560,113 @@ def run_auth_shield():
                 if flow:
                     flow.fetch_token(code=auth_code, code_verifier=code_verifier)
                     credentials = flow.credentials
+                    
+                    # ID 토큰 검증 및 사용자 정보 추출
                     id_info = id_token.verify_oauth2_token(
                         credentials.id_token, GoogleRequest(), flow.client_config['client_id']
                     )
-                    user_info = {"email": id_info.get("email"), "name": id_info.get("name"), "picture": id_info.get("picture")}
                     
+                    user_info = {
+                        "email": id_info.get("email"),
+                        "name": id_info.get("name"),
+                        "picture": id_info.get("picture")
+                    }
+                    
+                    # 세션 저장
                     st.session_state.user_info = user_info
                     st.session_state.logged_in = True
                     
-                    # 쿠키 저장 (컴포넌트 + JS 백업)
+                    # 1. 컴포넌트 방식으로 쿠키 저장
                     user_key = "anime_user_session"
                     expires = datetime.now() + timedelta(days=30)
-                    cookie_manager.set(user_key, user_info, expires_at=expires, key="save_user_cookie")
+                    cookie_manager.set(
+                        user_key, 
+                        user_info, 
+                        expires_at=expires,
+                        key="save_user_cookie"
+                    )
                     
+                    # 2. 자바스크립트 방식으로 직접 쿠키 저장 (시크릿 모드/iframe 차단 대비)
+                    # JSON 데이터를 안전하게 문자열화
                     user_info_json = json.dumps(user_info, ensure_ascii=False)
-                    encoded_val = urllib.parse.quote(user_info_json)
+                    import urllib.parse
+                    encoded_user_info = urllib.parse.quote(user_info_json)
+                    
                     st.components.v1.html(f"""
                         <script>
-                            const val = "{encoded_val}";
-                            const exp = "{expires.strftime('%a, %d %b %Y %H:%M:%S GMT')}";
-                            document.cookie = "{user_key}=" + val + "; path=/; expires=" + exp + "; SameSite=Lax";
+                            const cookieValue = "{encoded_user_info}";
+                            const expires = "{expires.strftime('%a, %d %b %Y %H:%M:%S GMT')}";
+                            document.cookie = "{user_key}=" + cookieValue + "; path=/; expires=" + expires + "; SameSite=Lax";
+                            // 부모 창에도 시도 (Streamlit 구조 대응)
+                            window.parent.document.cookie = "{user_key}=" + cookieValue + "; path=/; expires=" + expires + "; SameSite=Lax";
                         </script>
                     """, height=0)
                     
+                    # 시청 목록 및 설정 즉시 로드
                     sync_user_data_to_session(user_info["email"])
-                    import time; time.sleep(0.5)
+                    
+                    # 쿠키가 저장될 시간을 아주 잠시 기다린 후 새로고침 (파라미터 제거)
+                    import time
+                    time.sleep(0.5)
                     st.query_params.clear()
                     st.rerun()
-            except Exception: st.query_params.clear()
+            except Exception as e:
+                st.error(f"로그인 처리 중 오류 발생: {e}")
+                # 오류 발생 시에도 일단 파라미터는 지워서 무한 루프 방지
+                st.query_params.clear()
         else:
+            # 코드가 있는데 검증자가 없으면 (이미 처리되었거나 세션 만료) 주소창 청소
             st.query_params.clear()
             st.rerun()
         
-    # 4. 쿠키 기반 세션 복구 (강화된 로직)
+    # 4. 쿠키 기반 세션 복구 확인 (기존 로그인된 경우)
     user_key = "anime_user_session"
     
-    # 쿠키 매니저가 로딩 중일 때 (None)
     if all_cookies is None:
+        # 쿠키 매니저가 아직 로딩 중일 때는 아무것도 하지 않음
         return False
         
-    # 쿠키 데이터 파싱
-    cookie_val = all_cookies.get(user_key)
-    if cookie_val:
+    if user_key in all_cookies:
         try:
             import base64
-            # 다양한 인코딩 방식 대응
+            import urllib.parse
+            raw_data = all_cookies[user_key]
+            
+            # 1. URL 디코딩 (브라우저/라이브러리에 따라 인코딩된 경우 대비)
+            if isinstance(raw_data, str) and ("%" in raw_data or "+" in raw_data):
+                raw_data = urllib.parse.unquote(raw_data)
+            
+            # 2. 데이터 파싱 시도 (Base64 -> JSON -> dict 순서)
             user_info = None
-            if isinstance(cookie_val, dict):
-                user_info = cookie_val
-            else:
+            try:
+                # Base64 시도
+                decoded_str = base64.b64decode(raw_data).decode('utf-8')
+                user_info = json.loads(decoded_str)
+            except:
                 try:
-                    # 1. URL 디코딩 후 JSON 시도
-                    decoded = urllib.parse.unquote(cookie_val)
-                    user_info = json.loads(decoded)
+                    # 일반 JSON 시도
+                    user_info = json.loads(raw_data)
                 except:
-                    try:
-                        # 2. Base64 시도
-                        decoded = base64.b64decode(cookie_val).decode('utf-8')
-                        user_info = json.loads(decoded)
-                    except:
-                        # 3. 생 JSON 시도
-                        user_info = json.loads(cookie_val)
+                    # 이미 딕셔너리인 경우
+                    if isinstance(raw_data, dict):
+                        user_info = raw_data
             
             if user_info and isinstance(user_info, dict) and "email" in user_info:
                 st.session_state.user_info = user_info
                 st.session_state.logged_in = True
+                # 쿠키로 복구 시 시청 목록도 함께 로드
                 if st.session_state.watched_list is None:
-                    sync_user_data_to_session(user_info["email"])
-                st.rerun()
-        except: pass
+                    try:
+                        # 성공 시 데이터 로드
+                        sync_user_data_to_session(user_info["email"])
+                    except Exception as e:
+                        # DB 에러(할당량 등) 발생 시 None으로 유지하여 다음 rerun에 재시도하도록 함
+                        st.session_state.watched_list = None
+                        st.warning(f"⚠️ 시청 목록을 불러오는 중 오류가 발생했습니다. (잠시 후 자동 재시도)")
+                st.rerun() 
+        except Exception as e:
+            # 복구 실패 시 로그만 남기고 게스트 모드 유지
+            pass
     return False
 
 # 보호막 가동

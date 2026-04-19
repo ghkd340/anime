@@ -1208,10 +1208,7 @@ with st.sidebar:
         st.session_state.page = 1
         st.rerun()
     
-    # 내 평점 필터 추가 (봤을 때만 유효)
     s_rating = 0.0
-    if only_w:
-        s_rating = st.slider("최소 평점 (내 평점)", 0.0, 5.0, 0.0, 0.1, format="%.1f", key="rating_filter")
 
     st.divider()
     if st.button("🎲 랜덤 추천 받기", use_container_width=True, type="primary"):
@@ -1222,7 +1219,7 @@ with st.sidebar:
             current_watched = st.session_state.watched_list or {}
             
             if only_w:
-                target_ids = [aid for aid, info in current_watched.items() if info.get('rating', 0) >= s_rating]
+                target_ids = list(current_watched.keys())
                 if not target_ids: target_ids = [0]
                 else: target_ids = target_ids[:500]
             

@@ -538,7 +538,15 @@ if st.session_state.genre_to_add:
 def run_auth_shield():
     # 1. 로그아웃 파라미터 처리 (새로고침 시 자동 로그인 방지의 핵심)
     if st.query_params.get("logout") == "true":
-        # 로그아웃 상태일 때는 쿠키가 있어도 세션을 복구하지 않고 차단함
+        # 불필요한 구글 인증 파라미터가 섞여 있다면 정리 (주소창 미관 및 보안)
+        redundant_params = ["state", "code", "scope", "authuser", "prompt", "iss"]
+        changed = False
+        for p in redundant_params:
+            if p in st.query_params:
+                del st.query_params[p]
+                changed = True
+        if changed:
+            st.rerun()
         return False
 
     # 2. 이미 로그인된 세션이면 통과

@@ -1,0 +1,15 @@
+name: Wake up Streamlit App
+
+on:
+  schedule:
+    # 6시간마다 한 번씩 실행 (UTC 기준)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # 수동으로도 실행 가능하게 설정
+
+jobs:
+  wake-up:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Visit Streamlit App
+        run: |
+          curl -I https://mearchive.streamlit.app

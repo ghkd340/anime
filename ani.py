@@ -931,8 +931,8 @@ with st.sidebar:
                 </div>
                 <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 30px;"></div>
                 <div>
-                    <div style="font-size: 1.2rem; font-weight: bold; color: #f39c12;">{avg_score:.1f}</div>
-                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">평균 평점</div>
+                    <div style="font-size: 1.2rem; font-weight: bold; color: #2E7D32;">{total_episodes:,}화</div>
+                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청 화수</div>
                 </div>
             </div>
             <div style="border-top: 1px dashed rgba(76, 175, 80, 0.2); padding-top: 10px; display: flex; justify-content: space-between; align-items: flex-end;">
@@ -941,8 +941,8 @@ with st.sidebar:
                     <div style="font-size: 1.15rem; color: #4CAF50; font-weight: bold; margin-top: 2px;">⏱️ {total_time_str}</div>
                 </div>
                 <div style="flex: 1; text-align: right;">
-                    <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">총 시청 화수</div>
-                    <div style="font-size: 1.15rem; color: #2E7D32; font-weight: bold; margin-top: 2px;">📺 {total_episodes:,}화</div>
+                    <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">평균 평점</div>
+                    <div style="font-size: 1.15rem; color: #f39c12; font-weight: bold; margin-top: 2px;">★ {avg_score:.1f}</div>
                 </div>
             </div>
         </div>

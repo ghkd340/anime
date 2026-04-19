@@ -931,7 +931,7 @@ with st.sidebar:
                 </div>
                 <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 30px;"></div>
                 <div>
-                    <div style="font-size: 1.2rem; font-weight: bold; color: #2E7D32;">{total_episodes:,}화</div>
+                    <div style="font-size: 1.2rem; font-weight: bold; color: #2E7D32;">{total_episodes}</div>
                     <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청 화수</div>
                 </div>
             </div>

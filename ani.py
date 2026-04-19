@@ -1211,7 +1211,7 @@ with st.sidebar:
     # 내 평점 필터 추가 (봤을 때만 유효)
     s_rating = 0.0
     if only_w:
-        s_rating = st.slider("최소 평점 (내 평점)", 0.0, 5.0, 0.0, 0.1, key="rating_filter")
+        s_rating = st.slider("최소 평점 (내 평점)", 0.0, 5.0, 0.0, 0.1, format="%.1f", key="rating_filter")
 
     st.divider()
     if st.button("🎲 랜덤 추천 받기", use_container_width=True, type="primary"):
@@ -1512,7 +1512,7 @@ else:
                     user_rating = w_data.get("rating", 5.0)
                     user_count = w_data.get("count", 1)
                     count_str = f" ({user_count}회)" if user_count > 1 else ""
-                    badge_html = f'<div class="watched-badge">✓ {user_rating}점{count_str}</div>'
+                    badge_html = f'<div class="watched-badge">✓ {user_rating:.1f}점{count_str}</div>'
                 else:
                     badge_html = '<div style="height:1.5rem; margin-bottom:5px;"></div>'
 
@@ -1624,7 +1624,7 @@ else:
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                         else:
-                            u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, key=f"score_new_{a_id}_{ac}")
+                            u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_new_{a_id}_{ac}")
                             u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_new_{a_id}_{ac}")
                             u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
                             

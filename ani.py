@@ -1205,6 +1205,9 @@ with st.sidebar:
 
     if s_adult != adult_param:
         st.query_params["adult"] = "true" if s_adult else "false"
+        # 정렬 상태가 있다면 유지
+        if "sort_by" in st.session_state:
+            st.query_params["sort"] = st.session_state.sort_by
         st.session_state.page = 1
         st.rerun()
     

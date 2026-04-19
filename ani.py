@@ -847,13 +847,16 @@ with st.sidebar:
                     
                     series_count = len(set(find(aid) for aid in watched_ids))
 
+                    total_episodes = 0
                     for aid, info in current_watched.items():
                         meta = meta_map.get(aid)
                         rating = info.get('rating', 0)
                         if meta:
                             count = info.get('count', 1)
-                            total_minutes += meta['episodes'] * meta['duration'] * count
-                            for g in meta['genres']:
+                            eps = meta.get('episodes') or 0
+                            total_episodes += eps * count
+                            total_minutes += eps * (meta.get('duration') or 0) * count
+                            for g in meta.get('genres', []):
                                 if g == "Hentai": continue
                                 ko_g = KO_GENRE_MAP.get(g, g)
                                 if ko_g not in genre_stats: genre_stats[ko_g] = [0, 0]
@@ -868,6 +871,7 @@ with st.sidebar:
                         "data": {
                             "avg_score": avg_score,
                             "series_count": series_count,
+                            "total_episodes": total_episodes,
                             "total_minutes": total_minutes,
                             "sorted_genres": sorted_genres
                         }
@@ -877,16 +881,17 @@ with st.sidebar:
                 st.session_state.stats_cache = {
                     "hash": current_hash,
                     "data": {
-                        "avg_score": 0, "series_count": 0, "total_minutes": 0, "sorted_genres": []
+                        "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": []
                     }
                 }
 
         # 캐시된 데이터 사용
         stats = st.session_state.stats_cache["data"] or {
-            "avg_score": 0, "series_count": 0, "total_minutes": 0, "sorted_genres": []
+            "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": []
         }
         avg_score = stats["avg_score"]
         series_count = stats["series_count"]
+        total_episodes = stats.get("total_episodes", 0)
         total_minutes = stats["total_minutes"]
         sorted_genres = stats["sorted_genres"]
 
@@ -926,16 +931,19 @@ with st.sidebar:
                 </div>
                 <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 30px;"></div>
                 <div>
-                    <div style="font-size: 1.2rem; font-weight: bold; color: #f39c12;">{avg_score:.2f}</div>
+                    <div style="font-size: 1.2rem; font-weight: bold; color: #f39c12;">{avg_score:.1f}</div>
                     <div style="font-size: 0.65rem; color: var(--secondary-text-color);">평균 평점</div>
                 </div>
             </div>
-            <div style="border-top: 1px dashed rgba(76, 175, 80, 0.2); padding-top: 10px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="border-top: 1px dashed rgba(76, 175, 80, 0.2); padding-top: 10px; display: flex; justify-content: space-between; align-items: flex-end;">
+                <div style="flex: 1;">
                     <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">총 시청 시간</div>
-                    <div style="font-size: 0.6rem; color: #666; background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 4px;">{st.session_state.time_unit}</div>
+                    <div style="font-size: 1.15rem; color: #4CAF50; font-weight: bold; margin-top: 2px;">⏱️ {total_time_str}</div>
                 </div>
-                <div style="font-size: 1.15rem; color: #4CAF50; font-weight: bold; margin-top: 5px;">⏱️ {total_time_str}</div>
+                <div style="flex: 1; text-align: right;">
+                    <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">총 시청 화수</div>
+                    <div style="font-size: 1.15rem; color: #2E7D32; font-weight: bold; margin-top: 2px;">📺 {total_episodes:,}화</div>
+                </div>
             </div>
         </div>
         """, unsafe_allow_html=True)

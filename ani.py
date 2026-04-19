@@ -1253,9 +1253,10 @@ with st.sidebar:
 sort_map = {"인기도순": "POPULARITY_DESC", "평점순": "SCORE_DESC", "방영일순": "START_DATE_DESC"}
 if st.session_state.logged_in and only_w:
     sort_map["내 평점순"] = "MY_SCORE_DESC"
+    sort_map["시청 순서순"] = "WATCH_AT_DESC"
 else:
-    # "내 평점순"이 선택된 상태에서 필터가 바뀌어 더 이상 유효하지 않은 경우 정렬 초기화
-    if st.session_state.sort_by == "내 평점순":
+    # "내 평점순"이나 "시청 순서순"이 선택된 상태에서 필터가 바뀌어 더 이상 유효하지 않은 경우 정렬 초기화
+    if st.session_state.sort_by in ["내 평점순", "시청 순서순"]:
         st.session_state.sort_by = "인기도순"
 
 # 필터 상태 감지 (변경 시 목록 초기화)
@@ -1286,12 +1287,15 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
         # 평점 필터링만 적용된 전체 ID 목록 (개수 제한 제거)
         target_ids = [aid for aid, info in current_watched.items() if info.get('rating', 0) >= s_rating]
         
-        # "내 평점순"인 경우 ID 목록 자체를 평점순(1순위) + 시청 횟수순(2순위)으로 미리 정렬
+        # 정렬에 따른 ID 목록 사전 정렬
         if st.session_state.sort_by == "내 평점순":
             target_ids.sort(key=lambda aid: (
                 current_watched[aid].get('rating', 0), 
                 current_watched[aid].get('count', 1)
             ), reverse=True)
+        elif st.session_state.sort_by == "시청 순서순":
+            # 'at' 필드가 없는 경우를 대비해 datetime.min 또는 아주 옛날 시간 사용
+            target_ids.sort(key=lambda aid: current_watched[aid].get('at') or datetime.min, reverse=True)
             
         if not target_ids: target_ids = [0]
     
@@ -1303,11 +1307,11 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
     # API용 정렬 값 결정
     api_sort = sort_map.get(st.session_state.sort_by, "POPULARITY_DESC")
     
-    # "내 평점순" 정렬 로직 (전체 데이터를 평점순으로 정렬 후 페이징)
-    is_my_rating_sort = (st.session_state.sort_by == "내 평점순" and only_w)
+    # "내 평점순" 또는 "시청 순서순" 정렬 로직 (전체 데이터를 정렬 후 페이징)
+    is_custom_sort = (st.session_state.sort_by in ["내 평점순", "시청 순서순"] and only_w)
     has_active_filters = any([new_search, s_year, s_season, s_genres, s_ex_genres, s_rating > 0])
     
-    if is_my_rating_sort:
+    if is_custom_sort:
         if has_active_filters:
             # 필터가 있는 경우: API 필터로 모든 작품을 가져온 뒤 시청 기록만 남김 (누락 방지 핵심 로직)
             if not st.session_state.all_media:
@@ -1331,11 +1335,14 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                         if not data['pageInfo']['hasNextPage'] or len(all_fetched) >= 500: break
                         temp_api_page += 1
                 
-                # 평점순 최종 정렬
-                all_fetched.sort(key=lambda x: (
-                    current_watched.get(x['id'], {}).get('rating', 0),
-                    current_watched.get(x['id'], {}).get('count', 1)
-                ), reverse=True)
+                # 최종 정렬
+                if st.session_state.sort_by == "내 평점순":
+                    all_fetched.sort(key=lambda x: (
+                        current_watched.get(x['id'], {}).get('rating', 0),
+                        current_watched.get(x['id'], {}).get('count', 1)
+                    ), reverse=True)
+                elif st.session_state.sort_by == "시청 순서순":
+                    all_fetched.sort(key=lambda x: current_watched.get(x['id'], {}).get('at') or datetime.min, reverse=True)
                 
                 st.session_state.all_media = all_fetched
                 st.session_state.has_next = False

@@ -536,14 +536,35 @@ if st.session_state.genre_to_add:
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
+    # --- [추가] URL 파라미터 자동 정리 (JS) ---
+    # state, code, logout 등이 포함된 지저분한 URL을 브라우저 주소창에서 즉시 제거합니다.
+    if any(k in st.query_params for k in ["state", "code", "logout", "iss"]):
+        st.components.v1.html("""
+            <script>
+                const url = new URL(window.parent.location.href);
+                const targets = ['state', 'code', 'scope', 'authuser', 'prompt', 'logout', 'iss'];
+                let changed = false;
+                targets.forEach(t => {
+                    if (url.searchParams.has(t)) {
+                        url.searchParams.delete(t);
+                        changed = true;
+                    }
+                });
+                if (changed) {
+                    window.parent.history.replaceState({}, document.title, url.pathname + url.search);
+                }
+            </script>
+        """, height=0)
+
     # 1. URL에 logout=true가 있으면 자동 로그인 차단
     if st.query_params.get("logout") == "true":
+        st.session_state.logout_clicked = True
         return False
 
     # 2. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
         # 로그인된 상태인데 주소창에 인증 파라미터가 남아있다면 제거
-        if "code" in st.query_params or "state" in st.query_params:
+        if any(k in st.query_params for k in ["code", "state", "logout"]):
             st.query_params.clear()
         return True
     
@@ -605,9 +626,7 @@ def run_auth_shield():
                     # 시청 목록 및 설정 즉시 로드
                     sync_user_data_to_session(user_info["email"])
                     
-                    # 쿠키가 저장될 시간을 아주 잠시 기다린 후 새로고침 (파라미터 제거)
-                    import time
-                    time.sleep(0.5)
+                    # 파라미터 제거 후 새로고침
                     st.query_params.clear()
                     st.rerun()
             except Exception as e:
@@ -622,8 +641,8 @@ def run_auth_shield():
     # 4. 쿠키 기반 세션 복구 확인 (기존 로그인된 경우)
     user_key = "anime_user_session"
     
-    if all_cookies is None:
-        # 쿠키 매니저가 아직 로딩 중일 때는 아무것도 하지 않음
+    if all_cookies is None or st.session_state.get('logout_clicked'):
+        # 쿠키 매니저가 아직 로딩 중이거나 방금 로그아웃한 경우 세션 복구 안 함
         return False
         
     if user_key in all_cookies:

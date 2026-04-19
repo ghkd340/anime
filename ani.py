@@ -930,7 +930,7 @@ with st.sidebar:
                         <span style="font-weight: 600; font-size: 0.9rem;">{g_name}</span>
                         <div style="text-align: right;">
                             <span style="color: #2e7d32; font-size: 0.85rem; font-weight: bold;">{g_count}작품</span>
-                            <span style="color: #f39c12; font-size: 0.85rem; margin-left: 8px;">★ {g_avg:.1f}</span>
+                            <span style="color: #f39c12; font-size: 0.85rem; margin-left: 8px;">★ {g_avg:.2f}</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)

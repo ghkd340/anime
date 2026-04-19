@@ -919,30 +919,33 @@ with st.sidebar:
         # 3. 통합 통계 카드 (단일 마크다운으로 구성하여 절대 깨지지 않음)
         st.markdown(f"""
         <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(76, 175, 80, 0.2); margin-bottom: 15px;">
+            <!-- 상단 3칸 -->
             <div style="display: flex; justify-content: space-around; align-items: center; text-align: center; margin-bottom: 15px;">
                 <div>
                     <div style="font-size: 1.2rem; font-weight: bold; color: #4CAF50;">{watched_count}</div>
                     <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청 작품</div>
                 </div>
-                <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 30px;"></div>
+                <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 25px;"></div>
                 <div>
                     <div style="font-size: 1.2rem; font-weight: bold; color: #2E7D32;">{series_count}</div>
                     <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시리즈</div>
                 </div>
-                <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 30px;"></div>
+                <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 25px;"></div>
                 <div>
                     <div style="font-size: 1.2rem; font-weight: bold; color: #2E7D32;">{total_episodes}</div>
                     <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청 화수</div>
                 </div>
             </div>
-            <div style="border-top: 1px dashed rgba(76, 175, 80, 0.2); padding-top: 10px; display: flex; justify-content: space-between; align-items: flex-end;">
+            <!-- 하단 2칸 -->
+            <div style="border-top: 1px dashed rgba(76, 175, 80, 0.2); padding-top: 15px; display: flex; justify-content: space-around; align-items: center; text-align: center;">
                 <div style="flex: 1;">
-                    <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">총 시청 시간</div>
-                    <div style="font-size: 1.15rem; color: #4CAF50; font-weight: bold; margin-top: 2px;">{total_time_str}</div>
+                    <div style="font-size: 1.1rem; font-weight: bold; color: #4CAF50;">{total_time_str}</div>
+                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">총 시청 시간</div>
                 </div>
-                <div style="flex: 1; text-align: right;">
-                    <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">평균 평점</div>
-                    <div style="font-size: 1.15rem; color: #f39c12; font-weight: bold; margin-top: 2px;">{avg_score:.2f}</div>
+                <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 25px;"></div>
+                <div style="flex: 1;">
+                    <div style="font-size: 1.1rem; font-weight: bold; color: #f39c12;">{avg_score:.1f}</div>
+                    <div style="font-size: 0.65rem; color: var(--secondary-text-color);">평균 평점</div>
                 </div>
             </div>
         </div>

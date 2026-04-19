@@ -536,17 +536,10 @@ if st.session_state.genre_to_add:
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
-    # 1. 로그아웃 파라미터 처리
+    # 1. 로그아웃 파라미터 처리 (새로고침 시 자동 로그인 방지의 핵심)
     if st.query_params.get("logout") == "true":
-        # 현재 세션에서 이미 로그아웃 처리를 완료했다면, 다음 접속을 위해 파라미터를 미리 지워둠
-        # (단, 로그아웃 버튼을 누른 직후에는 리런이 필요하므로 세션 상태로 제어)
-        if st.session_state.get("logout_clicked"):
-            st.session_state.logout_clicked = False
-            return False
-        else:
-            # 주소창에 logout이 남아있는 채로 새로 접속한 경우
-            del st.query_params["logout"]
-            st.rerun()
+        # 로그아웃 상태일 때는 쿠키가 있어도 세션을 복구하지 않고 차단함
+        return False
 
     # 2. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):

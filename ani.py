@@ -536,14 +536,25 @@ if st.session_state.genre_to_add:
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
-    # 1. 로그아웃 직후 상태 처리 (세션 내 차단)
-    if st.session_state.get("logout_clicked"):
+    # 1. 로그아웃 파라미터 처리 (새로고침 시 자동 로그인 방지의 핵심)
+    if st.query_params.get("logout") == "true":
+        # 불필요한 구글 인증 파라미터가 섞여 있다면 정리 (주소창 미관 및 보안)
+        redundant_params = ["state", "code", "scope", "authuser", "prompt", "iss"]
+        changed = False
+        for p in redundant_params:
+            if p in st.query_params:
+                del st.query_params[p]
+                changed = True
+        if changed:
+            st.rerun()
         return False
 
     # 2. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
-        if "code" in st.query_params or "state" in st.query_params:
+        # 로그인 상태인데 주소창에 불필요한 값(logout, code, state 등)이 있다면 즉시 제거
+        if st.query_params:
             st.query_params.clear()
+            st.rerun()
         return True
     
     # 3. 구글 OAuth 콜백 처리

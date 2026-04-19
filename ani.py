@@ -938,7 +938,7 @@ with st.sidebar:
             <div style="border-top: 1px dashed rgba(76, 175, 80, 0.2); padding-top: 10px; display: flex; justify-content: space-between; align-items: flex-end;">
                 <div style="flex: 1;">
                     <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">총 시청 시간</div>
-                    <div style="font-size: 1.15rem; color: #4CAF50; font-weight: bold; margin-top: 2px;">⏱{total_time_str}</div>
+                    <div style="font-size: 1.15rem; color: #4CAF50; font-weight: bold; margin-top: 2px;">{total_time_str}</div>
                 </div>
                 <div style="flex: 1; text-align: right;">
                     <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-color);">평균 평점</div>

@@ -10,6 +10,12 @@ jobs:
   wake-up:
     runs-on: ubuntu-latest
     steps:
-      - name: Visit Streamlit App
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Create empty commit to wake up
         run: |
-          curl -I https://mearchive.streamlit.app
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git commit --allow-empty -m "Auto-wake up: $(date)"
+          git push

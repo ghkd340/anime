@@ -1680,7 +1680,6 @@ else:
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                         elif is_w and status == "wish":
-                            st.info("이 작품은 보관 목록에 있습니다.")
                             u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_wish_to_w_{a_id}_{ac}")
                             u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_wish_to_w_{a_id}_{ac}")
                             u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_wish_to_w_{a_id}_{ac}")

@@ -1717,29 +1717,6 @@ else:
                         st.session_state.all_media = []
                         st.session_state.page = 1
                         st.rerun()
-
-                    # --- 연관 추천 섹션 추가 ---
-                    recs = anime.get('recommendations', {}).get('nodes', [])
-                    if recs:
-                        st.divider()
-                        st.markdown('<div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 10px;">✨ 이런 작품은 어때요?</div>', unsafe_allow_html=True)
-                        for r_node in recs:
-                            r_media = r_node.get('mediaRecommendation')
-                            if not r_media: continue
-                            r_title = r_media['title']['native'] or r_media['title']['romaji']
-                            r_img = r_media.get('coverImage', {}).get('large')
-                            
-                            # 추천 항목 렌더링 (가로 배치)
-                            r_col1, r_col2 = st.columns([1, 3])
-                            with r_col1:
-                                st.image(r_img, use_container_width=True)
-                            with r_col2:
-                                st.markdown(f'<div style="font-size: 0.8rem; font-weight: 600; line-height: 1.2;">{r_title}</div>', unsafe_allow_html=True)
-                                if st.button("이동", key=f"rec_go_{a_id}_{r_media['id']}", use_container_width=True):
-                                    st.query_params["q"] = r_title
-                                    st.session_state.all_media = []
-                                    st.session_state.page = 1
-                                    st.rerun()
                 
                 # 예고편 버튼
                 trailer = anime.get('trailer')

@@ -1719,7 +1719,7 @@ else:
                         else:
                             u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_new_{a_id}_{ac}")
                             u_count = st.number_input("시청 횟수 / 마지막 화수", min_value=1, value=1, step=1, key=f"count_new_{a_id}_{ac}")
-                            u_comment = st.text_area("코멘트", placeholder="감상평 또는 하차 이유", key=f"comm_new_{a_id}_{ac}")
+                            u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
                             
                             if st.button("저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
                                 # 낙관적 저장

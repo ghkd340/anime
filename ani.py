@@ -1203,9 +1203,10 @@ with st.sidebar:
     s_ex_genres = [genre_map[g] for g in excluded_genres] if excluded_genres else None
     
     # 시청 여부 필터 (Mutual Exclusive)
-    watch_options = ["전체", "본 작품만", "안 본 작품만"]
+    watch_options = ["전체", "본 작품만", "볼 작품만", "안 본 작품만"]
     s_watch = st.selectbox("시청 여부", watch_options, key="watch_filter") if st.session_state.logged_in else "전체"
     only_w = (s_watch == "본 작품만")
+    only_wish = (s_watch == "볼 작품만")
     only_not_w = (s_watch == "안 본 작품만")
 
     # --- 필터 초기화 버튼 (시청 여부 아래 배치) ---
@@ -1235,7 +1236,12 @@ with st.sidebar:
             current_watched = st.session_state.watched_list or {}
             
             if only_w:
-                target_ids = list(current_watched.keys())
+                target_ids = [aid for aid, info in current_watched.items() if info.get('status', 'watched') == 'watched']
+                if not target_ids: target_ids = [0]
+                else: target_ids = target_ids[:500]
+            
+            if only_wish:
+                target_ids = [aid for aid, info in current_watched.items() if info.get('status') == 'wish']
                 if not target_ids: target_ids = [0]
                 else: target_ids = target_ids[:500]
             
@@ -1267,7 +1273,7 @@ with st.sidebar:
 
 # 정렬 옵션 설정
 sort_map = {"인기도순": "POPULARITY_DESC", "평점순": "SCORE_DESC", "방영일순": "START_DATE_DESC"}
-if st.session_state.logged_in and only_w:
+if st.session_state.logged_in and (only_w or only_wish):
     sort_map["내 평점순"] = "MY_SCORE_DESC"
     sort_map["시청 순서순"] = "WATCH_AT_DESC"
 else:
@@ -1279,7 +1285,7 @@ else:
 current_filters = {
     "q": new_search, "y": s_year, "s": s_season, 
     "g": str(s_genres), "eg": str(s_ex_genres),
-    "only_w": only_w, "only_not_w": only_not_w, "adult": s_adult, "rating": s_rating,
+    "only_w": only_w, "only_wish": only_wish, "only_not_w": only_not_w, "adult": s_adult, "rating": s_rating,
     "sort": st.session_state.sort_by
 }
 
@@ -1300,8 +1306,8 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
     # 1. 시청한 작품 필터링용 ID 목록 생성
     current_watched = st.session_state.watched_list or {}
     if only_w:
-        # 평점 필터링만 적용된 전체 ID 목록 (개수 제한 제거)
-        target_ids = [aid for aid, info in current_watched.items() if info.get('rating', 0) >= s_rating]
+        # '시청 완료'한 작품만 필터링
+        target_ids = [aid for aid, info in current_watched.items() if info.get('status', 'watched') == 'watched' and info.get('rating', 0) >= s_rating]
         
         # 정렬에 따른 ID 목록 사전 정렬
         if st.session_state.sort_by == "내 평점순":
@@ -1313,6 +1319,15 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
             # 'at' 필드가 없는 경우를 대비해 datetime.min 또는 아주 옛날 시간 사용
             target_ids.sort(key=lambda aid: current_watched[aid].get('at') or datetime.min, reverse=True)
             
+        if not target_ids: target_ids = [0]
+
+    elif only_wish:
+        # '보관중'인 작품만 필터링
+        target_ids = [aid for aid, info in current_watched.items() if info.get('status') == 'wish']
+        
+        # 보관중인 작품은 등록 순서(at)로 정렬
+        target_ids.sort(key=lambda aid: current_watched[aid].get('at') or datetime.min, reverse=True)
+        
         if not target_ids: target_ids = [0]
     
     if only_not_w:

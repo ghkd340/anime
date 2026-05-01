@@ -91,6 +91,19 @@ st.markdown("""
         margin-bottom: 4px;
         box-sizing: border-box;
     }
+    .dropped-badge {
+        background-color: #7f8c8d;
+        color: white;
+        padding: 0 8px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        display: inline-block;
+        height: 1.5rem;
+        line-height: 1.5rem;
+        margin-bottom: 4px;
+        box-sizing: border-box;
+    }
     .google-login-btn {
         display: inline-flex;
         align-items: center;
@@ -1564,6 +1577,8 @@ else:
                 if is_w:
                     if status == "wish":
                         badge_html = '<div class="wish-badge">✓ 보관</div>'
+                    elif status == "dropped":
+                        badge_html = '<div class="dropped-badge">✖ 하차</div>'
                     else:
                         user_rating = w_data.get("rating", 5.0)
                         user_count = w_data.get("count", 1)
@@ -1653,7 +1668,7 @@ else:
                 if st.session_state.logged_in:
                     # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함
                     ac = st.session_state.action_cnt
-                    pop_label = "수정" if is_w and status == "watched" else ("보관중" if is_w and status == "wish" else "시청")
+                    pop_label = "수정" if is_w and status == "watched" else ("보관중" if is_w and status == "wish" else ("하차함" if is_w and status == "dropped" else "시청"))
                     
                     with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
                         if is_w and status == "watched":
@@ -1679,7 +1694,7 @@ else:
                                 update_db(a_id, "remove")
                                 st.session_state.action_cnt += 1
                                 st.rerun()
-                        elif is_w and status == "wish":
+                        elif is_w and (status == "wish" or status == "dropped"):
                             u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_wish_to_w_{a_id}_{ac}")
                             u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_wish_to_w_{a_id}_{ac}")
                             u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_wish_to_w_{a_id}_{ac}")
@@ -1692,7 +1707,8 @@ else:
                                 st.rerun()
                             
                             st.divider()
-                            if st.button("보관 취소", key=f"btn_wish_del_{a_id}_{ac}", use_container_width=True):
+                            del_label = "보관 취소" if status == "wish" else "하차 취소"
+                            if st.button(del_label, key=f"btn_wish_del_{a_id}_{ac}", use_container_width=True):
                                 if st.session_state.watched_list is not None:
                                     st.session_state.watched_list.pop(a_id, None)
                                 update_db(a_id, "remove")
@@ -1711,12 +1727,22 @@ else:
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                             
-                            if st.button("보관", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
-                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                                st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": "", "count": 0, "status": "wish"}
-                                update_db(a_id, "add", 0.0, "", 0, status="wish")
-                                st.session_state.action_cnt += 1
-                                st.rerun()
+                            # 보관 / 하차 버튼 가로 배치
+                            bw1, bw2 = st.columns(2)
+                            with bw1:
+                                if st.button("보관", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
+                                    if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": "", "count": 0, "status": "wish"}
+                                    update_db(a_id, "add", 0.0, "", 0, status="wish")
+                                    st.session_state.action_cnt += 1
+                                    st.rerun()
+                            with bw2:
+                                if st.button("하차", key=f"btn_drop_{a_id}_{ac}", use_container_width=True):
+                                    if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": "", "count": 0, "status": "dropped"}
+                                    update_db(a_id, "add", 0.0, "", 0, status="dropped")
+                                    st.session_state.action_cnt += 1
+                                    st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
             st.write("") 

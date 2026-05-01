@@ -78,6 +78,19 @@ st.markdown("""
         margin-bottom: 4px;
         box-sizing: border-box;
     }
+    .wish-badge {
+        background-color: #f39c12;
+        color: white;
+        padding: 0 8px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        display: inline-block;
+        height: 1.5rem;
+        line-height: 1.5rem;
+        margin-bottom: 4px;
+        box-sizing: border-box;
+    }
     .google-login-btn {
         display: inline-flex;
         align-items: center;
@@ -302,7 +315,7 @@ def sync_user_data_to_session(user_email):
     if prefs and "time_unit" in prefs:
         st.session_state.time_unit = prefs["time_unit"]
 
-def update_db(anime_id, action="add", rating=5.0, comment="", count=1):
+def update_db(anime_id, action="add", rating=5.0, comment="", count=1, status="watched"):
     """백그라운드 쓰레드에서 DB를 업데이트하여 UI 차단을 방지합니다."""
     if not db or not st.session_state.get("logged_in"): return
     user_email = st.session_state.user_info.get("email")
@@ -318,7 +331,8 @@ def update_db(anime_id, action="add", rating=5.0, comment="", count=1):
                             "at": datetime.now(), 
                             "rating": rating,
                             "comment": comment,
-                            "count": count
+                            "count": count,
+                            "status": status
                         }
                     }
                 }, merge=True)
@@ -349,7 +363,8 @@ def batch_update_db(data_dict):
                     "at": datetime.now(),
                     "rating": float(info.get('rating', 5.0)),
                     "comment": str(info.get('comment', "")),
-                    "count": int(info.get('count', 1))
+                    "count": int(info.get('count', 1)),
+                    "status": info.get('status', 'watched')
                 }
             user_ref.set({"watched": db_data}, merge=True)
         except Exception: pass
@@ -780,92 +795,107 @@ with st.sidebar:
             if watched_count > 0:
                 stats_pbar = st.empty()
                 with st.spinner("통계 분석 중..."):
-                    avg_score = sum(v.get('rating', 0) for v in current_watched.values()) / watched_count
-                    watched_ids = [int(aid) for aid in current_watched.keys()]
-                    meta_map = get_watched_metadata(watched_ids, p_bar_container=stats_pbar)
-                    stats_pbar.empty() # 작업 완료 후 표시줄 제거
+                    # 실제 '시청 완료'한 작품만 통계에 반영
+                    actually_watched = {k: v for k, v in current_watched.items() if v.get('status', 'watched') == 'watched'}
+                    watched_count_stats = len(actually_watched)
                     
-                    total_minutes = 0
-                    genre_stats = {} 
-                    
-                    # 시리즈 그룹화 (DSU)
-                    parent = {aid: aid for aid in watched_ids}
-                    def find(i):
-                        if parent[i] == i: return i
-                        parent[i] = find(parent[i])
-                        return parent[i]
-                    def union(i, j):
-                        root_i = find(i); root_j = find(j)
-                        if root_i != root_j: parent[root_i] = root_j
-
-                    related_to_watched = {}
-                    valid_rel_types = ['PREQUEL', 'SEQUEL', 'PARENT','SUMMARY']
-                    
-                    for aid in watched_ids:
-                        meta = meta_map.get(aid)
-                        if not meta: continue
-                        if aid not in related_to_watched: related_to_watched[aid] = set()
-                        related_to_watched[aid].add(aid)
-                        for edge in meta.get('relations', []):
-                            rel_id = edge['node']['id']
-                            if edge['relationType'] in valid_rel_types:
-                                if rel_id not in related_to_watched: related_to_watched[rel_id] = set()
-                                related_to_watched[rel_id].add(aid)
-                    
-                    for rel_id, aids in related_to_watched.items():
-                        aids_list = list(aids)
-                        for i in range(len(aids_list) - 1):
-                            union(aids_list[i], aids_list[i+1])
-                    
-                    series_count = len(set(find(aid) for aid in watched_ids))
-
-                    total_episodes = 0
-                    for aid, info in current_watched.items():
-                        meta = meta_map.get(aid)
-                        rating = info.get('rating', 0)
-                        if meta:
-                            count = info.get('count', 1)
-                            eps = meta.get('episodes') or 0
-                            total_episodes += eps * count
-                            total_minutes += eps * (meta.get('duration') or 0) * count
-                            for g in meta.get('genres', []):
-                                if g == "Hentai": continue
-                                ko_g = KO_GENRE_MAP.get(g, g)
-                                if ko_g not in genre_stats: genre_stats[ko_g] = [0, 0]
-                                genre_stats[ko_g][0] += rating
-                                genre_stats[ko_g][1] += 1
-                    
-                    sorted_genres = sorted(genre_stats.items(), key=lambda x: x[1][1], reverse=True)
+                    if watched_count_stats > 0:
+                        avg_score = sum(v.get('rating', 0) for v in actually_watched.values()) / watched_count_stats
+                        watched_ids = [int(aid) for aid in actually_watched.keys()]
+                        meta_map = get_watched_metadata(watched_ids, p_bar_container=stats_pbar)
+                        stats_pbar.empty() # 작업 완료 후 표시줄 제거
                         
-                    # 결과 캐싱
-                    st.session_state.stats_cache = {
-                        "hash": current_hash,
-                        "data": {
-                            "avg_score": avg_score,
-                            "series_count": series_count,
-                            "total_episodes": total_episodes,
-                            "total_minutes": total_minutes,
-                            "sorted_genres": sorted_genres
+                        total_minutes = 0
+                        genre_stats = {} 
+                        
+                        # 시리즈 그룹화 (DSU)
+                        parent = {aid: aid for aid in watched_ids}
+                        def find(i):
+                            if parent[i] == i: return i
+                            parent[i] = find(parent[i])
+                            return parent[i]
+                        def union(i, j):
+                            root_i = find(i); root_j = find(j)
+                            if root_i != root_j: parent[root_i] = root_j
+
+                        related_to_watched = {}
+                        valid_rel_types = ['PREQUEL', 'SEQUEL', 'PARENT','SUMMARY']
+                        
+                        for aid in watched_ids:
+                            meta = meta_map.get(aid)
+                            if not meta: continue
+                            if aid not in related_to_watched: related_to_watched[aid] = set()
+                            related_to_watched[aid].add(aid)
+                            for edge in meta.get('relations', []):
+                                rel_id = edge['node']['id']
+                                if edge['relationType'] in valid_rel_types:
+                                    if rel_id not in related_to_watched: related_to_watched[rel_id] = set()
+                                    related_to_watched[rel_id].add(aid)
+                        
+                        for rel_id, aids in related_to_watched.items():
+                            aids_list = list(aids)
+                            for i in range(len(aids_list) - 1):
+                                union(aids_list[i], aids_list[i+1])
+                        
+                        series_count = len(set(find(aid) for aid in watched_ids))
+
+                        total_episodes = 0
+                        for aid, info in actually_watched.items():
+                            meta = meta_map.get(aid)
+                            rating = info.get('rating', 0)
+                            if meta:
+                                count = info.get('count', 1)
+                                eps = meta.get('episodes') or 0
+                                total_episodes += eps * count
+                                total_minutes += eps * (meta.get('duration') or 0) * count
+                                for g in meta.get('genres', []):
+                                    if g == "Hentai": continue
+                                    ko_g = KO_GENRE_MAP.get(g, g)
+                                    if ko_g not in genre_stats: genre_stats[ko_g] = [0, 0]
+                                    genre_stats[ko_g][0] += rating
+                                    genre_stats[ko_g][1] += 1
+                        
+                        sorted_genres = sorted(genre_stats.items(), key=lambda x: x[1][1], reverse=True)
+                        
+                        # 결과 캐싱
+                        st.session_state.stats_cache = {
+                            "hash": current_hash,
+                            "data": {
+                                "avg_score": avg_score,
+                                "series_count": series_count,
+                                "total_episodes": total_episodes,
+                                "total_minutes": total_minutes,
+                                "sorted_genres": sorted_genres,
+                                "watched_count_stats": watched_count_stats
+                            }
                         }
-                    }
+                    else:
+                        # 시청 완료 작품이 없을 때
+                        st.session_state.stats_cache = {
+                            "hash": current_hash,
+                            "data": {
+                                "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": [], "watched_count_stats": 0
+                            }
+                        }
             else:
-                # 시청 기록이 0개일 때 즉시 초기화
+                # 데이터가 아예 없을 때
                 st.session_state.stats_cache = {
                     "hash": current_hash,
                     "data": {
-                        "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": []
+                        "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": [], "watched_count_stats": 0
                     }
                 }
 
         # 캐시된 데이터 사용
         stats = st.session_state.stats_cache["data"] or {
-            "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": []
+            "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": [], "watched_count_stats": 0
         }
         avg_score = stats["avg_score"]
         series_count = stats["series_count"]
         total_episodes = stats.get("total_episodes", 0)
         total_minutes = stats["total_minutes"]
         sorted_genres = stats["sorted_genres"]
+        watched_count_display = stats.get("watched_count_stats", 0)
 
         # 1. 시청 시간 단위 설정 (팝오버로 분리하여 레이아웃 깨짐 방지)
         st.write("<div style='height: 10px;'></div>", unsafe_allow_html=True)
@@ -894,7 +924,7 @@ with st.sidebar:
             <!-- 상단 3칸 -->
             <div style="display: flex; justify-content: space-around; align-items: center; text-align: center; margin-bottom: 15px;">
                 <div>
-                    <div style="font-size: 1.2rem; font-weight: bold; color: #4CAF50;">{watched_count}</div>
+                    <div style="font-size: 1.2rem; font-weight: bold; color: #4CAF50;">{watched_count_display}</div>
                     <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청 작품</div>
                 </div>
                 <div style="border-left: 1px solid rgba(76, 175, 80, 0.2); height: 25px;"></div>
@@ -1513,13 +1543,17 @@ else:
                 # --- 2차 최적화: 모든 정보를 하나의 HTML 블록으로 통합 렌더링 ---
                 is_w = a_id in current_watched
                 w_data = current_watched.get(a_id, {}) if is_w else {}
+                status = w_data.get("status", "watched")
                 
                 # 1. 뱃지 HTML
                 if is_w:
-                    user_rating = w_data.get("rating", 5.0)
-                    user_count = w_data.get("count", 1)
-                    count_str = f" ({user_count}회)" if user_count > 1 else ""
-                    badge_html = f'<div class="watched-badge">✓ {user_rating:.1f}점{count_str}</div>'
+                    if status == "wish":
+                        badge_html = '<div class="wish-badge">찜</div>'
+                    else:
+                        user_rating = w_data.get("rating", 5.0)
+                        user_count = w_data.get("count", 1)
+                        count_str = f" ({user_count}회)" if user_count > 1 else ""
+                        badge_html = f'<div class="watched-badge">✓ {user_rating:.1f}점{count_str}</div>'
                 else:
                     badge_html = '<div style="height:1.5rem; margin-bottom:5px;"></div>'
 
@@ -1543,7 +1577,7 @@ else:
 
                 # 4. 코멘트 영역
                 user_comment = w_data.get("comment", "")
-                if is_w and user_comment:
+                if is_w and status == "watched" and user_comment:
                     comment_html = f'<div class="user-comment-box">"{user_comment}"</div>'
                 else:
                     comment_html = '<div class="empty-comment-box"></div>'
@@ -1604,10 +1638,10 @@ else:
                 if st.session_state.logged_in:
                     # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함
                     ac = st.session_state.action_cnt
-                    pop_label = "수정" if is_w else "시청"
+                    pop_label = "수정" if is_w and status == "watched" else ("찜함" if is_w and status == "wish" else "시청")
                     
                     with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
-                        if is_w:
+                        if is_w and status == "watched":
                             w_data = current_watched.get(a_id, {})
                             u_score = st.slider("내 평점", 0.0, 5.0, round(float(w_data.get("rating", 5.0)), 1), 0.1, format="%.1f", key=f"score_edit_{a_id}_{ac}")
                             u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"count_edit_{a_id}_{ac}")
@@ -1616,15 +1650,35 @@ else:
                             if st.button("업데이트", key=f"btn_update_{a_id}_{ac}", use_container_width=True, type="primary"):
                                 # 낙관적 업데이트: UI에 즉시 반영
                                 if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
+                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
                                 # 백그라운드 저장 시동
-                                update_db(a_id, "add", u_score, u_comment, u_count)
+                                update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                                 
                             st.divider()
                             if st.button("시청 기록 삭제", key=f"btn_delete_{a_id}_{ac}", use_container_width=True):
                                 # 낙관적 삭제
+                                if st.session_state.watched_list is not None:
+                                    st.session_state.watched_list.pop(a_id, None)
+                                update_db(a_id, "remove")
+                                st.session_state.action_cnt += 1
+                                st.rerun()
+                        elif is_w and status == "wish":
+                            st.info("이 작품은 찜 목록에 있습니다.")
+                            u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_wish_to_w_{a_id}_{ac}")
+                            u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_wish_to_w_{a_id}_{ac}")
+                            u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_wish_to_w_{a_id}_{ac}")
+                            
+                            if st.button("시청 완료로 기록", key=f"btn_wish_to_w_{a_id}_{ac}", use_container_width=True, type="primary"):
+                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
+                                update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
+                                st.session_state.action_cnt += 1
+                                st.rerun()
+                            
+                            st.divider()
+                            if st.button("찜 해제", key=f"btn_wish_del_{a_id}_{ac}", use_container_width=True):
                                 if st.session_state.watched_list is not None:
                                     st.session_state.watched_list.pop(a_id, None)
                                 update_db(a_id, "remove")
@@ -1638,8 +1692,15 @@ else:
                             if st.button("저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
                                 # 낙관적 저장
                                 if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count}
-                                update_db(a_id, "add", u_score, u_comment, u_count)
+                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
+                                update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
+                                st.session_state.action_cnt += 1
+                                st.rerun()
+                            
+                            if st.button("찜", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
+                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                                st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": "", "count": 0, "status": "wish"}
+                                update_db(a_id, "add", 0.0, "", 0, status="wish")
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)

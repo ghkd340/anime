@@ -570,7 +570,10 @@ def run_auth_shield():
                     id_info = id_token.verify_oauth2_token(
                         credentials.id_token, GoogleRequest(), flow.client_config['client_id']
                     )
-                    user_info = {"email": id_info.get("email"), "name": id_info.get("name"), "picture": id_info.get("picture")}
+                    picture_url = id_info.get("picture")
+                    if picture_url and "=s96-c" in picture_url:
+                        picture_url = picture_url.replace("=s96-c", "=s500-c")
+                    user_info = {"email": id_info.get("email"), "name": id_info.get("name"), "picture": picture_url}
                     
                     st.session_state.user_info = user_info
                     st.session_state.logged_in = True
@@ -645,8 +648,8 @@ run_auth_shield()
 @st.cache_data(ttl=3600)
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
     url = 'https://graphql.anilist.co'
-    # 이미지 해상도를 large로 낮추어 로딩 속도 향상 (태블릿/모바일 최적화)
-    media_fields = "id title { native romaji } coverImage { large } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres"
+    # 이미지 해상도를 extraLarge로 설정하여 고화질 제공 (고해상도 디스플레이 최적화)
+    media_fields = "id title { native romaji } coverImage { extraLarge large } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres"
     
     # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
@@ -1546,7 +1549,7 @@ else:
                     comment_html = '<div class="empty-comment-box"></div>'
 
                 # 5. 통합 렌더링 (안전하게 이미지 경로 획득하여 KeyError 방지)
-                cover_img = anime.get('coverImage', {}).get('large') or anime.get('coverImage', {}).get('extraLarge')
+                cover_img = anime.get('coverImage', {}).get('extraLarge') or anime.get('coverImage', {}).get('large')
                 st.image(cover_img, use_container_width=True)
                 st.markdown(f"""
                 <div class="anime-card-container">

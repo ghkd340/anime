@@ -1548,7 +1548,7 @@ else:
                 # 1. 뱃지 HTML
                 if is_w:
                     if status == "wish":
-                        badge_html = '<div class="wish-badge">보관</div>'
+                        badge_html = '<div class="wish-badge">✓ 보관</div>'
                     else:
                         user_rating = w_data.get("rating", 5.0)
                         user_count = w_data.get("count", 1)
@@ -1697,7 +1697,7 @@ else:
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                             
-                            if st.button("✓ 보관", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
+                            if st.button("보관", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
                                 if st.session_state.watched_list is None: st.session_state.watched_list = {}
                                 st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": "", "count": 0, "status": "wish"}
                                 update_db(a_id, "add", 0.0, "", 0, status="wish")

@@ -1697,7 +1697,7 @@ else:
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                             
-                            if st.button("보관", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
+                            if st.button("✓ 보관", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
                                 if st.session_state.watched_list is None: st.session_state.watched_list = {}
                                 st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": "", "count": 0, "status": "wish"}
                                 update_db(a_id, "add", 0.0, "", 0, status="wish")

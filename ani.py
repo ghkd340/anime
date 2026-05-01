@@ -1708,6 +1708,20 @@ else:
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                             
+                            # 상태 전환 버튼 (보관 <-> 하차)
+                            if status == "wish":
+                                if st.button("하차로 변경", key=f"btn_wish_to_drop_{a_id}_{ac}", use_container_width=True):
+                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": u_count, "status": "dropped"}
+                                    update_db(a_id, "add", 0.0, u_comment, u_count, status="dropped")
+                                    st.session_state.action_cnt += 1
+                                    st.rerun()
+                            elif status == "dropped":
+                                if st.button("보관으로 변경", key=f"btn_drop_to_wish_{a_id}_{ac}", use_container_width=True):
+                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": 0, "status": "wish"}
+                                    update_db(a_id, "add", 0.0, u_comment, 0, status="wish")
+                                    st.session_state.action_cnt += 1
+                                    st.rerun()
+                            
                             st.divider()
                             del_label = "보관 취소" if status == "wish" else "하차 취소"
                             if st.button(del_label, key=f"btn_wish_del_{a_id}_{ac}", use_container_width=True):

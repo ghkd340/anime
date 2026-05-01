@@ -677,22 +677,7 @@ run_auth_shield()
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
     url = 'https://graphql.anilist.co'
     # 이미지 해상도를 extraLarge로 설정하여 고화질 제공 (고해상도 디스플레이 최적화)
-    # 연관 추천 정보를 가져오기 위해 recommendations 필드 추가
-    media_fields = """
-        id title { native romaji } coverImage { extraLarge large } 
-        averageScore popularity siteUrl season seasonYear 
-        trailer { id site } startDate { year month day } 
-        format genres 
-        recommendations(limit: 5, sort: RATING_DESC) {
-          nodes {
-            mediaRecommendation {
-              id
-              title { native romaji }
-              coverImage { large }
-            }
-          }
-        }
-    """
+    media_fields = "id title { native romaji } coverImage { extraLarge large } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres"
     
     # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
@@ -1258,7 +1243,7 @@ with st.sidebar:
     st.divider()
     if st.button("🎲 랜덤 추천 받기", use_container_width=True, type="primary"):
         with st.spinner("랜덤 작품 찾는 중..."):
-            # ... (기존 로직 유지)
+            # 필터링 조건 정리
             target_ids = None
             exclude_ids = None
             current_watched = st.session_state.watched_list or {}
@@ -1292,52 +1277,6 @@ with st.sidebar:
                 st.rerun()
             else:
                 st.warning("조건에 맞는 작품이 없습니다.")
-
-    # --- AI 취향 추천 버튼 추가 ---
-    if st.session_state.logged_in:
-        if st.button("✨ AI 취향 저격 추천", use_container_width=True, help="회원님이 높게 평가한 작품들의 장르를 분석하여 추천합니다."):
-            with st.spinner("회원님의 취향을 분석 중..."):
-                current_watched = st.session_state.watched_list or {}
-                # 4.0점 이상 준 작품들만 필터링
-                high_rated = {k: v for k, v in current_watched.items() if v.get('rating', 0) >= 4.0}
-                
-                if len(high_rated) < 3:
-                    st.warning("취향 분석을 위해 평점 4.0 이상의 작품을 3개 이상 등록해주세요!")
-                else:
-                    # 메타데이터에서 장르 추출
-                    high_ids = list(high_rated.keys())
-                    meta_map = get_watched_metadata(high_ids)
-                    
-                    genre_scores = {}
-                    for aid in high_ids:
-                        meta = meta_map.get(aid)
-                        if meta:
-                            for g in meta.get('genres', []):
-                                genre_scores[g] = genre_scores.get(g, 0) + 1
-                    
-                    # 가장 많이 본 장르 상위 3개 추출
-                    top_genres = sorted(genre_scores.items(), key=lambda x: x[1], reverse=True)[:3]
-                    recommend_genres = [g[0] for g in top_genres]
-                    
-                    # 이미 기록된 모든 작품 제외
-                    exclude_ids = list(current_watched.keys())
-                    if exclude_ids: exclude_ids = exclude_ids[:500]
-                    
-                    # 추천 데이터 요청
-                    recommend_data = fetch_random_anime(
-                        genres=recommend_genres,
-                        exclude_ids=exclude_ids,
-                        include_adult=s_adult
-                    )
-                    
-                    if recommend_data:
-                        st.session_state.all_media = recommend_data['media']
-                        st.session_state.is_random_mode = True # 랜덤 추천 모드 UI 활용
-                        st.session_state.random_media = None
-                        st.toast(f"✅ 회원님이 선호하는 {', '.join([KO_GENRE_MAP.get(g, g) for g in recommend_genres])} 장르 기반 추천입니다!")
-                        st.rerun()
-                    else:
-                        st.warning("추천할 작품을 찾지 못했습니다.")
 
     if st.session_state.is_random_mode:
         if st.button("🔙 일반 목록으로", use_container_width=True):
@@ -1713,33 +1652,12 @@ else:
                     
                     if st.button("🔍 이름으로 검색", key=f"btn_search_{a_id}", use_container_width=True, type="primary"):
                         title = anime['title']['native'] or anime['title']['romaji']
+                        # URL 파라미터만 갱신 (위젯 상태는 다음 런의 최상단 동기화 로직에서 처리)
                         st.query_params["q"] = title
+                        # 목록 초기화 및 페이지 리셋
                         st.session_state.all_media = []
                         st.session_state.page = 1
                         st.rerun()
-
-                    # --- 연관 추천 섹션 추가 ---
-                    recs = anime.get('recommendations', {}).get('nodes', [])
-                    if recs:
-                        st.divider()
-                        st.markdown('<div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 10px;">✨ 이런 작품은 어때요?</div>', unsafe_allow_html=True)
-                        for r_node in recs:
-                            r_media = r_node.get('mediaRecommendation')
-                            if not r_media: continue
-                            r_title = r_media['title']['native'] or r_media['title']['romaji']
-                            r_img = r_media.get('coverImage', {}).get('large')
-                            
-                            # 추천 항목 렌더링 (가로 배치)
-                            r_col1, r_col2 = st.columns([1, 3])
-                            with r_col1:
-                                st.image(r_img, use_container_width=True)
-                            with r_col2:
-                                st.markdown(f'<div style="font-size: 0.8rem; font-weight: 600; line-height: 1.2;">{r_title}</div>', unsafe_allow_html=True)
-                                if st.button("이동", key=f"rec_go_{a_id}_{r_media['id']}", use_container_width=True):
-                                    st.query_params["q"] = r_title
-                                    st.session_state.all_media = []
-                                    st.session_state.page = 1
-                                    st.rerun()
                 
                 # 예고편 버튼
                 trailer = anime.get('trailer')

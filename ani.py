@@ -1578,7 +1578,9 @@ else:
                     if status == "wish":
                         badge_html = '<div class="wish-badge">✓ 보관</div>'
                     elif status == "dropped":
-                        badge_html = '<div class="dropped-badge">✖ 하차</div>'
+                        drop_ep = w_data.get("count", 0)
+                        ep_str = f" ({drop_ep}화)" if drop_ep > 0 else ""
+                        badge_html = f'<div class="dropped-badge">✖ 하차{ep_str}</div>'
                     else:
                         user_rating = w_data.get("rating", 5.0)
                         user_count = w_data.get("count", 1)
@@ -1694,7 +1696,35 @@ else:
                                 update_db(a_id, "remove")
                                 st.session_state.action_cnt += 1
                                 st.rerun()
-                        elif is_w and (status == "wish" or status == "dropped"):
+                        elif is_w and status == "dropped":
+                            u_ep = st.number_input("마지막 시청 화수", min_value=0, value=int(w_data.get("count", 0)), step=1, key=f"ep_drop_edit_{a_id}_{ac}")
+                            u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="하차 이유 등을 남겨주세요", key=f"comm_drop_edit_{a_id}_{ac}")
+                            
+                            if st.button("하차 정보 업데이트", key=f"btn_upd_drop_{a_id}_{ac}", use_container_width=True, type="primary"):
+                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                                st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": u_ep, "status": "dropped"}
+                                update_db(a_id, "add", 0.0, u_comment, u_ep, status="dropped")
+                                st.session_state.action_cnt += 1
+                                st.rerun()
+                            
+                            st.divider()
+                            st.caption("시청을 재개하셨나요?")
+                            u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_drop_to_w_{a_id}_{ac}")
+                            if st.button("시청 완료로 기록", key=f"btn_drop_to_w_{a_id}_{ac}", use_container_width=True):
+                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": 1, "status": "watched"}
+                                update_db(a_id, "add", u_score, u_comment, 1, status="watched")
+                                st.session_state.action_cnt += 1
+                                st.rerun()
+
+                            st.divider()
+                            if st.button("하차 취소", key=f"btn_drop_del_{a_id}_{ac}", use_container_width=True):
+                                if st.session_state.watched_list is not None:
+                                    st.session_state.watched_list.pop(a_id, None)
+                                update_db(a_id, "remove")
+                                st.session_state.action_cnt += 1
+                                st.rerun()
+                        elif is_w and status == "wish":
                             u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_wish_to_w_{a_id}_{ac}")
                             u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_wish_to_w_{a_id}_{ac}")
                             u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_wish_to_w_{a_id}_{ac}")
@@ -1707,8 +1737,7 @@ else:
                                 st.rerun()
                             
                             st.divider()
-                            del_label = "보관 취소" if status == "wish" else "하차 취소"
-                            if st.button(del_label, key=f"btn_wish_del_{a_id}_{ac}", use_container_width=True):
+                            if st.button("보관 취소", key=f"btn_wish_del_{a_id}_{ac}", use_container_width=True):
                                 if st.session_state.watched_list is not None:
                                     st.session_state.watched_list.pop(a_id, None)
                                 update_db(a_id, "remove")
@@ -1716,8 +1745,8 @@ else:
                                 st.rerun()
                         else:
                             u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_new_{a_id}_{ac}")
-                            u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_new_{a_id}_{ac}")
-                            u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
+                            u_count = st.number_input("시청 횟수 / 마지막 화수", min_value=1, value=1, step=1, key=f"count_new_{a_id}_{ac}")
+                            u_comment = st.text_area("코멘트", placeholder="감상평 또는 하차 이유", key=f"comm_new_{a_id}_{ac}")
                             
                             if st.button("저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
                                 # 낙관적 저장
@@ -1739,8 +1768,8 @@ else:
                             with bw2:
                                 if st.button("하차", key=f"btn_drop_{a_id}_{ac}", use_container_width=True):
                                     if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": "", "count": 0, "status": "dropped"}
-                                    update_db(a_id, "add", 0.0, "", 0, status="dropped")
+                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": u_count, "status": "dropped"}
+                                    update_db(a_id, "add", 0.0, u_comment, u_count, status="dropped")
                                     st.session_state.action_cnt += 1
                                     st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)

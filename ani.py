@@ -1321,11 +1321,17 @@ with st.sidebar:
                     )
                     
                     if recommend_data:
-                        st.session_state.all_media = recommend_data['media']
-                        st.session_state.is_random_mode = True # 랜덤 추천 모드 UI 활용
-                        st.session_state.random_media = None
-                        st.toast(f"✅ 회원님이 선호하는 {', '.join([KO_GENRE_MAP.get(g, g) for g in recommend_genres])} 장르 기반 추천입니다!")
-                        st.rerun()
+                        # 2차 검증: 혹시라도 포함된 시청/보관/하차 기록 제거 (API 필터 누락 대비)
+                        filtered_media = [m for m in recommend_data['media'] if m['id'] not in current_watched]
+                        
+                        if filtered_media:
+                            st.session_state.all_media = filtered_media
+                            st.session_state.is_random_mode = True # 랜덤 추천 모드 UI 활용
+                            st.session_state.random_media = None
+                            st.toast(f"✅ 회원님이 선호하는 {', '.join([KO_GENRE_MAP.get(g, g) for g in recommend_genres])} 장르 기반 추천입니다!")
+                            st.rerun()
+                        else:
+                            st.warning("추천할 새로운 작품을 찾지 못했습니다. 다시 한번 눌러주세요!")
                     else:
                         st.warning("추천할 작품을 찾지 못했습니다.")
 

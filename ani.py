@@ -1273,7 +1273,7 @@ with st.sidebar:
 
 # 정렬 옵션 설정
 sort_map = {"인기도순": "POPULARITY_DESC", "평점순": "SCORE_DESC", "방영일순": "START_DATE_DESC"}
-if st.session_state.logged_in and (only_w or only_wish):
+if st.session_state.logged_in and only_w:
     sort_map["내 평점순"] = "MY_SCORE_DESC"
     sort_map["시청 순서순"] = "WATCH_AT_DESC"
 else:

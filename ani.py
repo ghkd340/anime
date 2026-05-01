@@ -1548,7 +1548,7 @@ else:
                 # 1. 뱃지 HTML
                 if is_w:
                     if status == "wish":
-                        badge_html = '<div class="wish-badge">찜</div>'
+                        badge_html = '<div class="wish-badge">보관</div>'
                     else:
                         user_rating = w_data.get("rating", 5.0)
                         user_count = w_data.get("count", 1)
@@ -1638,7 +1638,7 @@ else:
                 if st.session_state.logged_in:
                     # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함
                     ac = st.session_state.action_cnt
-                    pop_label = "수정" if is_w and status == "watched" else ("찜함" if is_w and status == "wish" else "시청")
+                    pop_label = "수정" if is_w and status == "watched" else ("보관중" if is_w and status == "wish" else "시청")
                     
                     with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
                         if is_w and status == "watched":
@@ -1665,7 +1665,7 @@ else:
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                         elif is_w and status == "wish":
-                            st.info("이 작품은 찜 목록에 있습니다.")
+                            st.info("이 작품은 보관 목록에 있습니다.")
                             u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_wish_to_w_{a_id}_{ac}")
                             u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_wish_to_w_{a_id}_{ac}")
                             u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_wish_to_w_{a_id}_{ac}")
@@ -1678,7 +1678,7 @@ else:
                                 st.rerun()
                             
                             st.divider()
-                            if st.button("찜 해제", key=f"btn_wish_del_{a_id}_{ac}", use_container_width=True):
+                            if st.button("보관 취소", key=f"btn_wish_del_{a_id}_{ac}", use_container_width=True):
                                 if st.session_state.watched_list is not None:
                                     st.session_state.watched_list.pop(a_id, None)
                                 update_db(a_id, "remove")
@@ -1697,7 +1697,7 @@ else:
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                             
-                            if st.button("찜", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
+                            if st.button("보관", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
                                 if st.session_state.watched_list is None: st.session_state.watched_list = {}
                                 st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": "", "count": 0, "status": "wish"}
                                 update_db(a_id, "add", 0.0, "", 0, status="wish")

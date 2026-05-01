@@ -92,7 +92,7 @@ st.markdown("""
         box-sizing: border-box;
     }
     .dropped-badge {
-        background-color: #7f8c8d;
+        background-color: #ff4b4b;
         color: white;
         padding: 0 8px;
         border-radius: 4px;

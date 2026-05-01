@@ -677,21 +677,11 @@ run_auth_shield()
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
     url = 'https://graphql.anilist.co'
     # 이미지 해상도를 extraLarge로 설정하여 고화질 제공 (고해상도 디스플레이 최적화)
-    # 연관 추천 정보를 가져오기 위해 recommendations 필드 추가
     media_fields = """
         id title { native romaji } coverImage { extraLarge large } 
         averageScore popularity siteUrl season seasonYear 
         trailer { id site } startDate { year month day } 
         format genres 
-        recommendations(perPage: 5, sort: [RATING_DESC]) {
-          nodes {
-            mediaRecommendation {
-              id
-              title { native romaji }
-              coverImage { large }
-            }
-          }
-        }
     """
     
     # AniList expects sort to be an array [MediaSort]

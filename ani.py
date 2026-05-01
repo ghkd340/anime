@@ -704,8 +704,8 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
     if genres: base_vars['g'] = genres
     if ex_genres: base_vars['eg'] = ex_genres
     if search: base_vars['q'] = search
-    if ids is not None: base_vars['ids'] = ids
-    if exclude_ids is not None: base_vars['ex_ids'] = exclude_ids
+    if ids: base_vars['ids'] = ids
+    if exclude_ids: base_vars['ex_ids'] = exclude_ids
 
     def build_query(is_adult_filter):
         return f'''

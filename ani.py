@@ -680,9 +680,14 @@ def run_auth_shield():
 # 보호막 가동
 run_auth_shield()
 
+MAX_SAFE_PAGE = 200 # 200 * 24 = 4800 (AniList limit is 5000 items)
+
 # 6. API 호출 (캐싱)
 @st.cache_data(ttl=3600)
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
+    if page * per_page > 5000:
+        return None
+    
     url = 'https://graphql.anilist.co'
     # 이미지 해상도를 extraLarge로 설정하여 고화질 제공 (고해상도 디스플레이 최적화)
     media_fields = "id title { native romaji } coverImage { extraLarge large } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres"

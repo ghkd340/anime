@@ -1708,26 +1708,29 @@ else:
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                             
-                            # 상태 전환 버튼 (보관 <-> 하차)
-                            if status == "wish":
-                                if st.button("하차로 변경", key=f"btn_wish_to_drop_{a_id}_{ac}", use_container_width=True):
-                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": u_count, "status": "dropped"}
-                                    update_db(a_id, "add", 0.0, u_comment, u_count, status="dropped")
-                                    st.session_state.action_cnt += 1
-                                    st.rerun()
-                            elif status == "dropped":
-                                if st.button("보관으로 변경", key=f"btn_drop_to_wish_{a_id}_{ac}", use_container_width=True):
-                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": 0, "status": "wish"}
-                                    update_db(a_id, "add", 0.0, u_comment, 0, status="wish")
-                                    st.session_state.action_cnt += 1
-                                    st.rerun()
+                            # 상태 전환 및 코멘트 업데이트 버튼 가로 배치
+                            bu1, bu2 = st.columns(2)
+                            with bu1:
+                                if status == "wish":
+                                    if st.button("하차로 변경", key=f"btn_wish_to_drop_{a_id}_{ac}", use_container_width=True):
+                                        st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": u_count, "status": "dropped"}
+                                        update_db(a_id, "add", 0.0, u_comment, u_count, status="dropped")
+                                        st.session_state.action_cnt += 1
+                                        st.rerun()
+                                elif status == "dropped":
+                                    if st.button("보관으로 변경", key=f"btn_drop_to_wish_{a_id}_{ac}", use_container_width=True):
+                                        st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": 0, "status": "wish"}
+                                        update_db(a_id, "add", 0.0, u_comment, 0, status="wish")
+                                        st.session_state.action_cnt += 1
+                                        st.rerun()
                             
-                            # 보관/하차 상태에서도 코멘트 업데이트를 위한 버튼 추가
-                            if st.button("코멘트 업데이트", key=f"btn_comm_update_{a_id}_{ac}", use_container_width=True):
-                                st.session_state.watched_list[a_id]["comment"] = u_comment
-                                update_db(a_id, "add", 0.0, u_comment, w_data.get("count", 0), status=status)
-                                st.session_state.action_cnt += 1
-                                st.rerun()
+                            with bu2:
+                                # 보관/하차 상태에서도 코멘트 업데이트를 위한 버튼 추가
+                                if st.button("코멘트 업데이트", key=f"btn_comm_update_{a_id}_{ac}", use_container_width=True):
+                                    st.session_state.watched_list[a_id]["comment"] = u_comment
+                                    update_db(a_id, "add", 0.0, u_comment, w_data.get("count", 0), status=status)
+                                    st.session_state.action_cnt += 1
+                                    st.rerun()
 
                             st.divider()
                             del_label = "보관 취소" if status == "wish" else "하차 취소"

@@ -1609,7 +1609,7 @@ else:
 
                 # 4. 코멘트 영역
                 user_comment = w_data.get("comment", "")
-                if is_w and status == "watched" and user_comment:
+                if is_w and user_comment:
                     comment_html = f'<div class="user-comment-box">"{user_comment}"</div>'
                 else:
                     comment_html = '<div class="empty-comment-box"></div>'
@@ -1699,7 +1699,7 @@ else:
                         elif is_w and (status == "wish" or status == "dropped"):
                             u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_wish_to_w_{a_id}_{ac}")
                             u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_wish_to_w_{a_id}_{ac}")
-                            u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_wish_to_w_{a_id}_{ac}")
+                            u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_wish_to_w_{a_id}_{ac}")
                             
                             if st.button("시청 완료로 기록", key=f"btn_wish_to_w_{a_id}_{ac}", use_container_width=True, type="primary"):
                                 if st.session_state.watched_list is None: st.session_state.watched_list = {}
@@ -1722,6 +1722,13 @@ else:
                                     st.session_state.action_cnt += 1
                                     st.rerun()
                             
+                            # 보관/하차 상태에서도 코멘트 업데이트를 위한 버튼 추가
+                            if st.button("코멘트 업데이트", key=f"btn_comm_update_{a_id}_{ac}", use_container_width=True):
+                                st.session_state.watched_list[a_id]["comment"] = u_comment
+                                update_db(a_id, "add", 0.0, u_comment, w_data.get("count", 0), status=status)
+                                st.session_state.action_cnt += 1
+                                st.rerun()
+
                             st.divider()
                             del_label = "보관 취소" if status == "wish" else "하차 취소"
                             if st.button(del_label, key=f"btn_wish_del_{a_id}_{ac}", use_container_width=True):
@@ -1748,8 +1755,8 @@ else:
                             with bw1:
                                 if st.button("보관", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
                                     if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": "", "count": 0, "status": "wish"}
-                                    update_db(a_id, "add", 0.0, "", 0, status="wish")
+                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": 0, "status": "wish"}
+                                    update_db(a_id, "add", 0.0, u_comment, 0, status="wish")
                                     st.session_state.action_cnt += 1
                                     st.rerun()
                             with bw2:

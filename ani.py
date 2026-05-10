@@ -1687,7 +1687,8 @@ else:
                 # AniLife 검색 버튼 (🔍)
                 with c2.popover("🔍", use_container_width=True, key=f"anilife_{a_id}"):
                     st.markdown("##### 📺 AniLife에서 검색")
-                    search_title = anime['title']['native'] or anime['title']['romaji']
+                    # 로마자 제목(romaji)을 우선적으로 사용하도록 수정
+                    search_title = anime['title']['romaji'] or anime['title']['native']
                     encoded_title = urllib.parse.quote(search_title)
                     
                     anilife_url = f"https://anilife.app/results?search_query={encoded_title}"

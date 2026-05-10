@@ -1684,20 +1684,17 @@ else:
                         st.session_state.page = 1
                         st.rerun()
                 
-                # AniLife 검색 버튼 (🔍)
-                with c2.popover("🔍", use_container_width=True, key=f"anilife_{a_id}"):
-                    st.markdown("##### 📺 AniLife에서 검색")
+                # 검색 팝오버 (🔍) - AniLife / LinkKF 선택
+                with c2.popover("🔍", use_container_width=True, key=f"search_pop_{a_id}"):
+                    st.markdown("##### 📺 시청 플랫폼 선택")
                     search_title = anime['title']['native'] or anime['title']['romaji']
                     encoded_title = urllib.parse.quote(search_title)
                     
                     anilife_url = f"https://anilife.app/results?search_query={encoded_title}"
+                    linkkf_url = f"https://linkkf.app/search?search_query={encoded_title}"
                     
-                    st.markdown(f"""
-                    <a href="{anilife_url}" target="_blank" class="ott-search-btn">
-                        <img src="https://anilife.live/favicon.ico" class="ott-logo" onerror="this.src='https://www.google.com/s2/favicons?domain=anilife.live'">
-                        <span>AniLife에서 검색</span>
-                    </a>
-                    """, unsafe_allow_html=True)
+                    st.link_button("🌐 AniLife에서 검색", anilife_url, use_container_width=True)
+                    st.link_button("🔗 LinkKF에서 검색", linkkf_url, use_container_width=True)
 
                 if st.session_state.logged_in:
                     # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함

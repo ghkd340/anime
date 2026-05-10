@@ -1516,6 +1516,31 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
             else:
                 break
 
+# --- 추천 정보 가져오기 (캐싱 적용) ---
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_recommendations(anime_id):
+    query = '''
+    query ($id: Int) {
+      Media (id: $id) {
+        recommendations (sort: RATING_DESC, perPage: 5) {
+          nodes {
+            mediaRecommendation {
+              id
+              title { native romaji }
+              coverImage { large }
+              siteUrl
+            }
+          }
+        }
+      }
+    }
+    '''
+    data, errors = safe_anilist_request(query, {'id': anime_id})
+    if data:
+        nodes = data.get('Media', {}).get('recommendations', {}).get('nodes', [])
+        return [node['mediaRecommendation'] for node in nodes if node.get('mediaRecommendation')]
+    return []
+
 # 7. 메인 화면 렌더링
 anime_list = st.session_state.all_media
 total_loaded = len(anime_list)

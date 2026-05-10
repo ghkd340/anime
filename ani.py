@@ -1690,7 +1690,7 @@ else:
                     search_title = anime['title']['native'] or anime['title']['romaji']
                     encoded_title = urllib.parse.quote(search_title)
                     
-                    anilife_url = f"https://anilife.live/search?q={encoded_title}"
+                    anilife_url = f"https://anilife.app/search?q={encoded_title}"
                     
                     st.markdown(f"""
                     <a href="{anilife_url}" target="_blank" class="ott-search-btn">

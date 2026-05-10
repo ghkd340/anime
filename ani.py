@@ -1691,7 +1691,7 @@ else:
                     encoded_title = urllib.parse.quote(search_title)
                     
                     anilife_url = f"https://anilife.app/results?search_query={encoded_title}"
-                    linkkf_url = f"https://linkkf.app/search?search_query={encoded_title}"
+                    linkkf_url = f"https://linkkf.live/?s={encoded_title}"
                     
                     st.link_button("🌐 AniLife에서 검색", anilife_url, use_container_width=True)
                     st.link_button("🔗 LinkKF에서 검색", linkkf_url, use_container_width=True)

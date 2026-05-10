@@ -1686,7 +1686,7 @@ else:
                 
                 # 검색 팝오버 (🔍) - AniLife / LinkKF 선택
                 with c2.popover("🔍", use_container_width=True, key=f"search_pop_{a_id}"):
-                    st.markdown("##### 📺 시청 플랫폼 선택", anchor=False)
+                    st.markdown("**📺 시청 플랫폼 선택**")
                     search_title = anime['title']['native'] or anime['title']['romaji']
                     encoded_title = urllib.parse.quote(search_title)
                     

@@ -412,6 +412,14 @@ def safe_anilist_request(query, variables, max_retries=3):
                 time.sleep(retry_after + i) # 점진적으로 대기 시간 증가
                 continue
             
+            # 400 에러 시 상세 정보 추출 시도
+            if res.status_code == 400:
+                try:
+                    err_json = res.json()
+                    if 'errors' in err_json:
+                        return None, f"AniList Error: {err_json['errors'][0].get('message')}"
+                except: pass
+            
             res.raise_for_status()
             res_json = res.json()
             if 'errors' in res_json:
@@ -768,8 +776,11 @@ def fetch_random_anime(year=None, season=None, genres=None, ex_genres=None, sear
         return None
     
     last_page = first_page['pageInfo']['lastPage']
+    # AniList는 최대 5000개 아이템까지만 페이지네이션을 허용함 (24개씩일 경우 약 208페이지)
+    max_safe_page = min(last_page, 5000 // 24)
+    
     # 2. 랜덤 페이지 선택
-    random_p = random.randint(1, last_page)
+    random_p = random.randint(1, max_safe_page)
     # 3. 해당 페이지 데이터 가져오기 (캐싱 방지를 위해 sort에 무작위성 가미는 어려우니 순서만 섞음)
     result = fetch_anime(random_p, "POPULARITY_DESC", year, season, genres, ex_genres, search, ids, exclude_ids, include_adult)
     if result and result.get('media'):

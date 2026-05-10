@@ -1684,33 +1684,26 @@ else:
                         st.session_state.page = 1
                         st.rerun()
                 
-                # 유사 작품 추천 버튼 (🎡)
-                with c2.popover("🎡", use_container_width=True, key=f"rec_{a_id}"):
-                    st.markdown("##### 🎡 유사한 작품 추천")
-                    recs = fetch_recommendations(a_id)
-                    if recs:
-                        for r in recs:
-                            r_title = r['title']['native'] or r['title']['romaji']
-                            r_img = r['coverImage']['large']
-                            
-                            # 추천 항목 디자인
-                            st.markdown(f"""
-                            <div class="relation-item" style="cursor: pointer;" onclick="window.open('{r['siteUrl']}', '_blank')">
-                                <img src="{r_img}" style="width: 50px; height: 70px; object-fit: cover; border-radius: 4px;">
-                                <div style="flex: 1; min-width: 0;">
-                                    <div class="relation-title" style="white-space: normal; font-size: 0.8rem; line-height: 1.2;">{r_title}</div>
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            # 클릭 시 해당 작품 검색으로 이동하는 버튼 (옵션)
-                            if st.button("🔍 검색", key=f"btn_rec_search_{a_id}_{r['id']}", use_container_width=True):
-                                st.query_params["q"] = r_title
-                                st.session_state.all_media = []
-                                st.session_state.page = 1
-                                st.rerun()
-                    else:
-                        st.caption("추천 정보가 없습니다.")
+                # OTT 검색 버튼 (🔍)
+                with c2.popover("🔍", use_container_width=True, key=f"ott_{a_id}"):
+                    st.markdown("##### 📺 어디서 볼 수 있나요?")
+                    search_title = anime['title']['native'] or anime['title']['romaji']
+                    encoded_title = urllib.parse.quote(search_title)
+                    
+                    ott_services = [
+                        {"name": "라프텔", "url": f"https://laftel.net/search?q={encoded_title}", "icon": "https://laftel.net/favicon.ico"},
+                        {"name": "넷플릭스", "url": f"https://www.netflix.com/search?q={encoded_title}", "icon": "https://www.netflix.com/favicon.ico"},
+                        {"name": "왓챠", "url": f"https://watcha.com/search?query={encoded_title}", "icon": "https://watcha.com/favicon.ico"},
+                        {"name": "티빙", "url": f"https://www.tving.com/search?keyword={encoded_title}", "icon": "https://www.tving.com/favicon.ico"}
+                    ]
+                    
+                    for ott in ott_services:
+                        st.markdown(f"""
+                        <a href="{ott['url']}" target="_blank" class="ott-search-btn">
+                            <img src="{ott['icon']}" class="ott-logo">
+                            <span>{ott['name']}에서 검색</span>
+                        </a>
+                        """, unsafe_allow_html=True)
 
                 if st.session_state.logged_in:
                     # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함

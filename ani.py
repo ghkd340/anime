@@ -1555,15 +1555,15 @@ def on_sort_change():
 h_col1, h_col2 = st.columns([4, 1])
 with h_col1:
     if st.session_state.is_random_mode:
-        st.title(f"🎲 랜덤 추천 결과 ({total_loaded}개)")
+        st.title(f"🎲 랜덤 추천 결과 ({total_loaded}개)", anchor=False)
     elif new_search:
-        st.title(f"🔍 '{new_search}' 검색 결과 ({total_loaded}개)")
+        st.title(f"🔍 '{new_search}' 검색 결과 ({total_loaded}개)", anchor=False)
     else:
         title_parts = [] 
         if s_year: title_parts.append(str(s_year))
         if s_season_label != "전체": title_parts.append(s_season_label)
         title_text = " ".join(title_parts) if title_parts else "전체 목록"
-        st.title(f"📅 {title_text} Archive ({total_loaded}개)")
+        st.title(f"📅 {title_text} Archive ({total_loaded}개)", anchor=False)
 with h_col2:
     st.write("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     if not st.session_state.is_random_mode:

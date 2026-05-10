@@ -1684,26 +1684,20 @@ else:
                         st.session_state.page = 1
                         st.rerun()
                 
-                # OTT 검색 버튼 (🔍)
-                with c2.popover("🔍", use_container_width=True, key=f"ott_{a_id}"):
-                    st.markdown("##### 📺 어디서 볼 수 있나요?")
+                # AniLife 검색 버튼 (🔍)
+                with c2.popover("🔍", use_container_width=True, key=f"anilife_{a_id}"):
+                    st.markdown("##### 📺 AniLife에서 검색")
                     search_title = anime['title']['native'] or anime['title']['romaji']
                     encoded_title = urllib.parse.quote(search_title)
                     
-                    ott_services = [
-                        {"name": "라프텔", "url": f"https://laftel.net/search?q={encoded_title}", "icon": "https://laftel.net/favicon.ico"},
-                        {"name": "넷플릭스", "url": f"https://www.netflix.com/search?q={encoded_title}", "icon": "https://www.netflix.com/favicon.ico"},
-                        {"name": "왓챠", "url": f"https://watcha.com/search?query={encoded_title}", "icon": "https://watcha.com/favicon.ico"},
-                        {"name": "티빙", "url": f"https://www.tving.com/search?keyword={encoded_title}", "icon": "https://www.tving.com/favicon.ico"}
-                    ]
+                    anilife_url = f"https://anilife.live/search?q={encoded_title}"
                     
-                    for ott in ott_services:
-                        st.markdown(f"""
-                        <a href="{ott['url']}" target="_blank" class="ott-search-btn">
-                            <img src="{ott['icon']}" class="ott-logo">
-                            <span>{ott['name']}에서 검색</span>
-                        </a>
-                        """, unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <a href="{anilife_url}" target="_blank" class="ott-search-btn">
+                        <img src="https://anilife.live/favicon.ico" class="ott-logo" onerror="this.src='https://www.google.com/s2/favicons?domain=anilife.live'">
+                        <span>AniLife에서 검색</span>
+                    </a>
+                    """, unsafe_allow_html=True)
 
                 if st.session_state.logged_in:
                     # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함

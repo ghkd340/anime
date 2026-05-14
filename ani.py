@@ -612,6 +612,21 @@ if 'genre_filter' not in st.session_state: st.session_state.genre_filter = []
 if 'genre_to_add' not in st.session_state: st.session_state.genre_to_add = None
 if 'time_unit' not in st.session_state: st.session_state.time_unit = "시간"
 
+# --- URL 파라미터를 통한 분기 필터링 처리 ---
+if "year_filter" in st.query_params:
+    try:
+        y_param = int(st.query_params["year_filter"])
+        if y_param in list(range(datetime.now().year, 1989, -1)):
+            st.session_state.year_filter = y_param
+    except: pass
+    del st.query_params["year_filter"]
+
+if "season_filter" in st.query_params:
+    s_param = st.query_params["season_filter"]
+    if s_param in ["1분기", "2분기", "3분기", "4분기"]:
+        st.session_state.season_filter = s_param
+    del st.query_params["season_filter"]
+
 # --- 장르 추가 대기열 처리 (위젯 생성 전 확실히 할당) ---
 if st.session_state.genre_to_add:
     new_g = st.session_state.genre_to_add
@@ -1083,11 +1098,14 @@ with st.sidebar:
                                 r_sum, count = q_data
                                 q_avg = r_sum / count
                                 
-                                # 분기 클릭 시 필터 적용 및 통계 표시 (커스텀 HTML 레이아웃으로 오버플로우 방지)
+                                # 분기 클릭 시 필터 적용 및 통계 표시 (커스텀 HTML 레이아웃)
                                 st.markdown(f"""
-                                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 5px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 8px; padding: 4px 0;">
                                     <div style="flex: 0 0 auto;">
-                                        <a href="?year_filter={y}&season_filter={s_lab}" target="_self" style="text-decoration: none; color: #666; font-size: 0.85rem;">{s_lab}</a>
+                                        <a href="?year_filter={y}&season_filter={s_lab}" target="_self" 
+                                           style="text-decoration: none; color: #4CAF50; font-size: 0.9rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: rgba(76, 175, 80, 0.1);">
+                                           {s_lab}
+                                        </a>
                                     </div>
                                     <div class="q-stat-text" style="flex: 1; text-align: right; margin-left: 10px;">
                                         <span style="color: #2e7d32; font-weight: bold;">{count}작품</span>
@@ -1095,12 +1113,6 @@ with st.sidebar:
                                     </div>
                                 </div>
                                 """, unsafe_allow_html=True)
-                                
-                                # 버튼 기능을 유지하기 위한 투명 버튼 (URL 파라미터 방식 대신 세션 방식 유지 선호 시)
-                                if st.button(f"선택: {s_lab}", key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
-                                    st.session_state.year_filter = y
-                                    st.session_state.season_filter = s_lab
-                                    st.rerun()
             else:
                 st.caption("시청 완료 데이터가 없습니다.")
 

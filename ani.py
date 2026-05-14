@@ -208,6 +208,33 @@ st.markdown("""
         white-space: nowrap !important;
         font-size: 0.7rem !important;
     }
+    /* 사이드바 내 중첩된 익스팬더(분기별 통계)의 버튼을 링크 스타일로 변경 */
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button {
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        color: #666 !important;
+        text-decoration: none !important;
+        text-align: left !important;
+        font-size: 0.85rem !important;
+        font-weight: normal !important;
+        display: inline !important;
+        width: auto !important;
+        height: auto !important;
+        min-height: 0 !important;
+        box-shadow: none !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button div p {
+        font-size: 0.85rem !important;
+        font-weight: normal !important;
+        color: inherit !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button:hover {
+        color: #ff4b4b !important;
+        text-decoration: none !important;
+    }
+
     /* 분기별 통계 모바일 한 줄 유지 및 세로 중앙 정렬 */
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="stHorizontalBlock"] {
         display: flex !important;
@@ -221,7 +248,6 @@ st.markdown("""
         padding: 0 !important;
         min-width: fit-content !important;
     }
-    
     .q-stat-text {
         white-space: nowrap !important;
         font-size: 0.8rem !important;
@@ -1049,14 +1075,6 @@ with st.sidebar:
                     
                     # 연도별로 또 다른 expander (계층 구조)
                     with st.expander(f"{y}년 ({year_total}작품)"):
-                        # 해당 연도 전체 선택 버튼 추가
-                        if st.button(f"📅 {y}년 전체 시청 목록 보기", key=f"y_filter_btn_{y}", use_container_width=True):
-                            st.session_state.year_filter = y
-                            st.session_state.season_filter = "전체"
-                            st.rerun()
-                        
-                        st.markdown('<div style="margin: 5px 0; border-bottom: 1px dashed #ddd;"></div>', unsafe_allow_html=True)
-
                         # 분기 순서대로 표시
                         for s_val, s_lab in [("WINTER", "1분기"), ("SPRING", "2분기"), ("SUMMER", "3분기"), ("FALL", "4분기")]:
                             q_data = quarterly_stats.get((y, s_val))
@@ -1065,10 +1083,21 @@ with st.sidebar:
                                 r_sum, count = q_data
                                 q_avg = r_sum / count
                                 
-                                # 버튼 하나로 통계 표시와 선택 기능을 통합하여 UI 간소화
-                                # 요청하신 형식 '분기(작품수|별점)'에 맞춰 텍스트 구성
-                                btn_label = f"{s_lab}(:green[{count}작품]|:orange[★{q_avg:.2f}])"
-                                if st.button(btn_label, key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
+                                # 분기 클릭 시 필터 적용 및 통계 표시 (커스텀 HTML 레이아웃으로 오버플로우 방지)
+                                st.markdown(f"""
+                                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 5px;">
+                                    <div style="flex: 0 0 auto;">
+                                        <a href="?year_filter={y}&season_filter={s_lab}" target="_self" style="text-decoration: none; color: #666; font-size: 0.85rem;">{s_lab}</a>
+                                    </div>
+                                    <div class="q-stat-text" style="flex: 1; text-align: right; margin-left: 10px;">
+                                        <span style="color: #2e7d32; font-weight: bold;">{count}작품</span>
+                                        <span style="color: #f39c12; margin-left: 5px;">★{q_avg:.2f}</span>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # 버튼 기능을 유지하기 위한 투명 버튼 (URL 파라미터 방식 대신 세션 방식 유지 선호 시)
+                                if st.button(f"선택: {s_lab}", key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
                                     st.session_state.year_filter = y
                                     st.session_state.season_filter = s_lab
                                     st.rerun()

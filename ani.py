@@ -1452,8 +1452,19 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                 current_watched[aid].get('count', 1)
             ), reverse=True)
         elif st.session_state.sort_by == "시청 순서순":
-            # 'at' 필드가 없는 경우를 대비해 datetime.min 또는 아주 옛날 시간 사용
-            target_ids.sort(key=lambda aid: current_watched[aid].get('at') or datetime.min, reverse=True)
+            # 'at' 필드가 없는 경우나 타입 불일치를 방지하기 위한 안전한 정렬 키
+            def get_sort_key(aid):
+                val = current_watched[aid].get('at')
+                if val is None: return datetime.min
+                # 문자열로 저장된 경우 처리
+                if isinstance(val, str):
+                    try: return datetime.fromisoformat(val.replace('Z', '+00:00'))
+                    except: return datetime.min
+                # aware/naive 비교 에러 방지 (Firestore는 주로 aware)
+                if hasattr(val, 'tzinfo') and val.tzinfo is not None:
+                    return val.replace(tzinfo=None)
+                return val
+            target_ids.sort(key=get_sort_key, reverse=True)
             
         if not target_ids: target_ids = [0]
 

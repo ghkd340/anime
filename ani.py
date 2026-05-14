@@ -1351,10 +1351,6 @@ with st.sidebar:
     only_wish = (s_watch == "볼 작품만")
     only_not_w = (s_watch == "안 본 작품만")
 
-    # 시청 여부가 '본 작품만'으로 변경될 경우 정렬을 '내 평점순'으로 자동 변경
-    if st.session_state.get("last_filters", {}).get("only_w") == False and only_w == True:
-        st.session_state.sort_by = "내 평점순"
-
     # --- 필터 초기화 버튼 (시청 여부 아래 배치) ---
     if st.button("🔄 전체 필터 초기화", use_container_width=True, on_click=reset_all_filters):
         st.rerun()

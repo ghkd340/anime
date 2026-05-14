@@ -234,14 +234,17 @@ st.markdown("""
         color: #ff4b4b !important;
         text-decoration: none !important;
     }
-    /* 분기별 통계 모바일 한 줄 유지 */
+    /* 분기별 통계 모바일 한 줄 유지 및 세로 중앙 정렬 */
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
         flex-wrap: nowrap !important;
         align-items: center !important;
+        gap: 8px !important;
     }
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="column"] {
         width: auto !important;
-        flex: 1 1 auto !important;
+        flex: 1 1 0% !important;
         min-width: 0 !important;
     }
 </style>
@@ -1073,7 +1076,7 @@ with st.sidebar:
                                 q_avg = r_sum / count
                                 
                                 # 분기 클릭 시 필터 적용을 위한 버튼 레이아웃
-                                col_q_name, col_q_stat = st.columns([1, 1])
+                                col_q_name, col_q_stat = st.columns([1, 2], gap="small")
                                 with col_q_name:
                                     if st.button(f"{s_lab}", key=f"q_filter_btn_{y}_{s_val}"):
                                         st.session_state.year_filter = y
@@ -1081,7 +1084,7 @@ with st.sidebar:
                                         st.rerun()
                                 with col_q_stat:
                                     st.markdown(f"""
-                                    <div style="text-align: right; padding-top: 5px;">
+                                    <div style="text-align: right;">
                                         <span style="color: #2e7d32; font-size: 0.85rem; font-weight: bold;">{count}작품</span>
                                         <span style="color: #f39c12; font-size: 0.85rem; margin-left: 5px;">★{q_avg:.2f}</span>
                                     </div>

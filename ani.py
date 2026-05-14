@@ -826,14 +826,10 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
         return None
 
 def fetch_random_anime(year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
-    """필터에 맞는 작품 중 무작위로 한 페이지를 가져옵니다. (자동 재시도 및 정렬 무작위화 로직 포함)"""
-    # 5,000위 제한 벽을 효과적으로 우회하기 위해 다양한 정렬 방식 사용
-    sort_options = ["POPULARITY_DESC", "SCORE_DESC", "START_DATE_DESC", "TRENDING_DESC", "ID_DESC"]
+    """필터에 맞는 작품 중 무작위로 한 페이지를 가져옵니다. (자동 재시도 로직 포함)"""
+    current_sort = "POPULARITY_DESC"
     
     for attempt in range(3):
-        # 매 시도마다 정렬 방식을 무작위로 변경
-        current_sort = random.choice(sort_options)
-        
         # 1. 먼저 전체 페이지 수를 확인하기 위해 1개만 요청 (에러 발생 시 조용히 넘어가기 위해 show_error=False)
         first_page = fetch_anime(1, current_sort, year, season, genres, ex_genres, search, ids, exclude_ids, include_adult, per_page=1, show_error=False)
         if not first_page or not first_page.get('media'):
@@ -852,7 +848,6 @@ def fetch_random_anime(year=None, season=None, genres=None, ex_genres=None, sear
             random.shuffle(result['media'])
             return result
     
-    # 모든 시도가 실패한 경우에만 마지막으로 에러 메시지 표시 시도 (또는 기본값 반환)
     return None
 
 # 5. 사이드바 UI

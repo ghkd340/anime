@@ -829,7 +829,7 @@ def fetch_random_anime(year=None, season=None, genres=None, ex_genres=None, sear
     """필터에 맞는 작품 중 무작위로 한 페이지를 가져옵니다. (자동 재시도 로직 포함)"""
     current_sort = "POPULARITY_DESC"
     
-    for attempt in range(3):
+    for attempt in range(10):
         # 1. 먼저 전체 페이지 수를 확인하기 위해 1개만 요청 (에러 발생 시 조용히 넘어가기 위해 show_error=False)
         first_page = fetch_anime(1, current_sort, year, season, genres, ex_genres, search, ids, exclude_ids, include_adult, per_page=1, show_error=False)
         if not first_page or not first_page.get('media'):

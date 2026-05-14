@@ -737,7 +737,7 @@ MAX_SAFE_PAGE = 200 # 200 * 24 = 4800 (Safer than 5000 to avoid API boundary err
 # 6. API 호출 (캐싱)
 @st.cache_data(ttl=3600)
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
-    if page * per_page > 4800:
+    if page * per_page > 4000:
         return None
     
     url = 'https://graphql.anilist.co'

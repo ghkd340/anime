@@ -10,8 +10,6 @@ import threading
 import concurrent.futures
 import extra_streamlit_components as stx
 import urllib.parse
-import pandas as pd
-import plotly.express as px
 
 # 구글 인증 관련 라이브러리
 from google_auth_oauthlib.flow import Flow
@@ -998,42 +996,6 @@ with st.sidebar:
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-            else:
-                st.caption("데이터가 없습니다.")
-
-        with st.expander("📅 분기별 시청 통계"):
-            if watched_count > 0:
-                # 실제로 '시청 완료'한 작품의 'at' 날짜 추출
-                watched_dates = [v.get('at') for v in actually_watched.values() if v.get('at')]
-                if watched_dates:
-                    # 데이터프레임 생성 및 분기 계산
-                    df_q = pd.DataFrame({'date': watched_dates})
-                    df_q['year'] = df_q['date'].dt.year
-                    df_q['quarter'] = df_q['date'].dt.quarter
-                    df_q['year_quarter'] = df_q['year'].astype(str) + " Q" + df_q['quarter'].astype(str)
-                    
-                    # 분기별 카운트 및 정렬
-                    q_counts = df_q.groupby(['year', 'quarter', 'year_quarter']).size().reset_index(name='count')
-                    q_counts = q_counts.sort_values(['year', 'quarter'])
-                    
-                    # 차트 생성
-                    fig = px.bar(q_counts, x='year_quarter', y='count', 
-                                 text='count',
-                                 labels={'year_quarter': '분기', 'count': '작품 수'},
-                                 template="plotly_dark")
-                    fig.update_traces(marker_color='#4CAF50', textposition='outside')
-                    fig.update_layout(
-                        margin=dict(l=10, r=10, t=10, b=10), 
-                        height=300,
-                        xaxis_tickangle=-45,
-                        showlegend=False,
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        font=dict(size=10)
-                    )
-                    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-                else:
-                    st.caption("시청 날짜 데이터가 없습니다.")
             else:
                 st.caption("데이터가 없습니다.")
 

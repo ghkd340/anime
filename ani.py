@@ -736,8 +736,8 @@ MAX_SAFE_PAGE = 200 # 200 * 24 = 4800 (Safer than 5000 to avoid API boundary err
 
 # 6. API 호출 (캐싱)
 @st.cache_data(ttl=3600)
-def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24):
-    if page * per_page > 4000:
+def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24, show_error=True):
+    if page * per_page > 4800:
         return None
     
     url = 'https://graphql.anilist.co'
@@ -779,7 +779,7 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
         if not include_adult:
             data, errors = make_request(False)
             if errors:
-                st.error(f"API Error: {errors}")
+                if show_error: st.error(f"API Error: {errors}")
                 return None
             return data
         else:
@@ -792,7 +792,7 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
                 d_adult, e_adult = future_adult.result()
             
             if e_normal and e_adult:
-                st.error(f"API Error: {e_normal}")
+                if show_error: st.error(f"API Error: {e_normal}")
                 return None
                 
             d_normal = d_normal or {}
@@ -822,27 +822,38 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
                 "media": combined_media[:per_page]
             }
     except Exception as e:
-        st.error(f"Fetch Error: {e}")
+        if show_error: st.error(f"Fetch Error: {e}")
         return None
 
 def fetch_random_anime(year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
-    """필터에 맞는 작품 중 무작위로 한 페이지를 가져옵니다."""
-    # 1. 먼저 전체 페이지 수를 확인하기 위해 1개만 요청
-    first_page = fetch_anime(1, "POPULARITY_DESC", year, season, genres, ex_genres, search, ids, exclude_ids, include_adult)
-    if not first_page or not first_page.get('media'):
-        return None
+    """필터에 맞는 작품 중 무작위로 한 페이지를 가져옵니다. (자동 재시도 및 정렬 무작위화 로직 포함)"""
+    # 5,000위 제한 벽을 효과적으로 우회하기 위해 다양한 정렬 방식 사용
+    sort_options = ["POPULARITY_DESC", "SCORE_DESC", "START_DATE_DESC", "TRENDING_DESC", "ID_DESC"]
     
-    last_page = first_page['pageInfo']['lastPage']
-    # AniList는 최대 5000개 아이템까지만 페이지네이션을 허용함 (24개씩일 경우 약 208페이지)
-    max_safe_page = min(last_page, 5000 // 24)
+    for attempt in range(3):
+        # 매 시도마다 정렬 방식을 무작위로 변경
+        current_sort = random.choice(sort_options)
+        
+        # 1. 먼저 전체 페이지 수를 확인하기 위해 1개만 요청 (에러 발생 시 조용히 넘어가기 위해 show_error=False)
+        first_page = fetch_anime(1, current_sort, year, season, genres, ex_genres, search, ids, exclude_ids, include_adult, per_page=1, show_error=False)
+        if not first_page or not first_page.get('media'):
+            continue
+        
+        last_page = first_page['pageInfo']['lastPage']
+        # 24개씩 가져올 때 4800위까지의 안전한 페이지 수 계산
+        max_safe_page = min(last_page, 4800 // 24)
+        
+        # 2. 랜덤 페이지 선택
+        random_p = random.randint(1, max_safe_page)
+        
+        # 3. 해당 페이지 데이터 가져오기
+        result = fetch_anime(random_p, current_sort, year, season, genres, ex_genres, search, ids, exclude_ids, include_adult, show_error=False)
+        if result and result.get('media'):
+            random.shuffle(result['media'])
+            return result
     
-    # 2. 랜덤 페이지 선택
-    random_p = random.randint(1, max_safe_page)
-    # 3. 해당 페이지 데이터 가져오기 (캐싱 방지를 위해 sort에 무작위성 가미는 어려우니 순서만 섞음)
-    result = fetch_anime(random_p, "POPULARITY_DESC", year, season, genres, ex_genres, search, ids, exclude_ids, include_adult)
-    if result and result.get('media'):
-        random.shuffle(result['media'])
-    return result
+    # 모든 시도가 실패한 경우에만 마지막으로 에러 메시지 표시 시도 (또는 기본값 반환)
+    return None
 
 # 5. 사이드바 UI
 with st.sidebar:

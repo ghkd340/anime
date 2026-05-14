@@ -491,7 +491,8 @@ def get_watched_metadata(ids, p_bar_container=None):
         st.session_state.metadata_storage = {}
         
     clean_ids = list(set(int(x) for x in ids))
-    missing_ids = [i for i in clean_ids if i not in st.session_state.metadata_storage]
+    # 'seasonYear' 키가 없는 경우에도 누락된 것으로 간주하여 다시 불러옴 (데이터 구조 업데이트 대응)
+    missing_ids = [i for i in clean_ids if i not in st.session_state.metadata_storage or 'seasonYear' not in st.session_state.metadata_storage[i]]
     
     if missing_ids:
         # 50개씩 청크 분할
@@ -822,7 +823,8 @@ with st.sidebar:
             st.session_state.stats_cache = {"hash": None, "data": None}
             
         # 현재 시청 목록의 상태를 나타내는 해시 생성 (ID, 평점, 시청 횟수 포함하여 변경 시 통계 재계산)
-        current_hash = hash(frozenset((k, v.get('rating', 0), v.get('count', 1)) for k, v in current_watched.items()))
+        # v2: 분기별 통계 정보 추가 대응을 위해 해시 시드 변경
+        current_hash = hash(("v2", frozenset((k, v.get('rating', 0), v.get('count', 1)) for k, v in current_watched.items())))
         
         if st.session_state.stats_cache["hash"] != current_hash:
             if watched_count > 0:

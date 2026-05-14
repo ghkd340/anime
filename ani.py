@@ -1092,9 +1092,18 @@ with st.sidebar:
                                 q_avg = r_sum / count
                                 
                                 # 버튼 하나로 통계 표시와 선택 기능을 통합하여 UI 간소화
-                                # 작품수는 초록색(:green[]), 별점은 노란색(:orange[])으로 표시 (Streamlit 컬러 문법 활용)
-                                btn_label = f"{s_lab} (:green[{count}작품] | :orange[★{q_avg:.2f}])"
-                                if st.button(btn_label, key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
+                                # HTML을 사용하여 정밀한 색상 제어 (#2e7d32: 초록, #f39c12: 주황)
+                                st.markdown(f"""
+                                <div style="margin-bottom: 5px;">
+                                    <span style="font-size: 0.85rem; color: #666;">{s_lab}</span>
+                                    <span style="font-size: 0.8rem; color: #2e7d32; font-weight: bold; margin-left: 5px;">({count}작품</span>
+                                    <span style="font-size: 0.8rem; color: #666; margin: 0 2px;">|</span>
+                                    <span style="font-size: 0.8rem; color: #f39c12; font-weight: bold;">★{q_avg:.2f})</span>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # 실제 클릭 기능을 담당하는 버튼 (스타일은 상단의 CSS로 제어되어 투명하게 보임)
+                                if st.button(f"선택: {s_lab}", key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
                                     st.session_state.year_filter = y
                                     st.session_state.season_filter = s_lab
                                     st.rerun()

@@ -1083,20 +1083,24 @@ with st.sidebar:
                                 r_sum, count = q_data
                                 q_avg = r_sum / count
                                 
-                                # 분기 클릭 시 필터 적용을 위한 버튼 레이아웃
-                                col_q_name, col_q_stat = st.columns([1, 2])
-                                with col_q_name:
-                                    if st.button(f"{s_lab}", key=f"q_filter_btn_{y}_{s_val}"):
-                                        st.session_state.year_filter = y
-                                        st.session_state.season_filter = s_lab
-                                        st.rerun()
-                                with col_q_stat:
-                                    st.markdown(f"""
-                                    <div class="q-stat-text">
+                                # 분기 클릭 시 필터 적용 및 통계 표시 (커스텀 HTML 레이아웃으로 오버플로우 방지)
+                                st.markdown(f"""
+                                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 5px;">
+                                    <div style="flex: 0 0 auto;">
+                                        <a href="?year_filter={y}&season_filter={s_lab}" target="_self" style="text-decoration: none; color: #666; font-size: 0.85rem;">{s_lab}</a>
+                                    </div>
+                                    <div class="q-stat-text" style="flex: 1; text-align: right; margin-left: 10px;">
                                         <span style="color: #2e7d32; font-weight: bold;">{count}작품</span>
                                         <span style="color: #f39c12; margin-left: 5px;">★{q_avg:.2f}</span>
                                     </div>
-                                    """, unsafe_allow_html=True)
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # 버튼 기능을 유지하기 위한 투명 버튼 (URL 파라미터 방식 대신 세션 방식 유지 선호 시)
+                                if st.button(f"선택: {s_lab}", key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
+                                    st.session_state.year_filter = y
+                                    st.session_state.season_filter = s_lab
+                                    st.rerun()
             else:
                 st.caption("시청 완료 데이터가 없습니다.")
 

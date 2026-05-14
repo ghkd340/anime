@@ -496,6 +496,12 @@ def fetch_metadata_from_api(missing_ids):
           genres
           season
           seasonYear
+          averageScore
+          popularity
+          format
+          coverImage { extraLarge large }
+          siteUrl
+          startDate { year month day }
           relations {
             edges {
               relationType(version: 2)
@@ -519,6 +525,12 @@ def fetch_metadata_from_api(missing_ids):
                     'genres': m.get('genres', []),
                     'season': m.get('season'),
                     'seasonYear': m.get('seasonYear'),
+                    'averageScore': m.get('averageScore', 0),
+                    'popularity': m.get('popularity', 0),
+                    'format': m.get('format', 'TV'),
+                    'coverImage': m.get('coverImage', {}),
+                    'siteUrl': m.get('siteUrl'),
+                    'startDate': m.get('startDate', {}),
                     'relations': m.get('relations', {}).get('edges', [])
                 }
         return chunk_data
@@ -1526,38 +1538,24 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                             if q not in t_native and q not in t_romaji: continue
                         
                         # API 데이터 형식에 맞춰 객체 구성 (UI 렌더링용)
-                        # fetch_anime에서 가져오는 구조와 동일하게 맞춤
                         info = current_watched[aid]
                         filtered_media.append({
                             'id': aid,
                             'title': meta['title'],
-                            'coverImage': {
-                                'extraLarge': f"https://img.anidb.net/pics/anime/{aid}.jpg", # 임시 (실제 이미지는 나중에 API로 보충하거나 meta에 저장)
-                                'large': f"https://img.anidb.net/pics/anime/{aid}.jpg"
-                            },
+                            'coverImage': meta.get('coverImage', {}),
                             'averageScore': meta.get('averageScore', 0),
                             'popularity': meta.get('popularity', 0),
                             'season': meta.get('season'),
                             'seasonYear': meta.get('seasonYear'),
                             'format': meta.get('format', 'TV'),
-                            'genres': meta.get('genres', [])
+                            'genres': meta.get('genres', []),
+                            'siteUrl': meta.get('siteUrl'),
+                            'startDate': meta.get('startDate', {})
                         })
                     
-                    # 4. 실시간 메타데이터 보충 (이미지 주소 등 UI 필수 정보)
-                    # 위에서 구성한 객체에는 이미지가 없으므로, ID 목록으로 다시 한 번 AniList API 호출 (이미지/포함 정보 등)
-                    # 50개씩 끊어서 호출하여 API 제한 준수
-                    final_media = []
-                    f_ids = [m['id'] for m in filtered_media]
-                    
-                    for k in range(0, len(f_ids), 50):
-                        chunk_ids = f_ids[k:k+50]
-                        data = fetch_anime(1, "POPULARITY_DESC", None, None, None, None, None, ids=chunk_ids, per_page=50, include_adult=True)
-                        if data and data['media']:
-                            final_media.extend(data['media'])
-                    
-                    # 5. 최종 정렬 수행
+                    # 5. 최종 정렬 수행 (이미 필요한 모든 데이터가 filtered_media에 포함됨)
                     if st.session_state.sort_by == "내 평점순":
-                        final_media.sort(key=lambda x: (
+                        filtered_media.sort(key=lambda x: (
                             current_watched.get(x['id'], {}).get('rating', 0),
                             current_watched.get(x['id'], {}).get('count', 1)
                         ), reverse=True)
@@ -1567,16 +1565,16 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                             if val is None: return datetime.min
                             if hasattr(val, 'tzinfo') and val.tzinfo is not None: return val.replace(tzinfo=None)
                             return val
-                        final_media.sort(key=get_sort_key, reverse=True)
+                        filtered_media.sort(key=get_sort_key, reverse=True)
                     elif st.session_state.sort_by == "인기도순":
-                        final_media.sort(key=lambda x: x.get('popularity', 0), reverse=True)
+                        filtered_media.sort(key=lambda x: x.get('popularity', 0), reverse=True)
                     elif st.session_state.sort_by == "평점순":
-                        final_media.sort(key=lambda x: x.get('averageScore', 0) or 0, reverse=True)
+                        filtered_media.sort(key=lambda x: x.get('averageScore', 0) or 0, reverse=True)
                     elif st.session_state.sort_by == "방영일순":
-                        final_media.sort(key=lambda x: (x.get('seasonYear') or 0, x.get('season') or ""), reverse=True)
+                        filtered_media.sort(key=lambda x: (x.get('seasonYear') or 0, x.get('season') or ""), reverse=True)
                     
-                    st.session_state.all_media = final_media
-                    st.session_state.has_next = False # 전체를 다 가져왔으므로
+                    st.session_state.all_media = filtered_media
+                    st.session_state.has_next = False
                     st.session_state.total_pages = 1
     
     # 일반 목록 로딩 (안 본 작품만 포함)

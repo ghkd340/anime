@@ -1025,7 +1025,7 @@ with st.sidebar:
                     year_total = sum(count for (yr, s), count in quarterly_stats.items() if yr == y)
                     
                     # 연도별로 또 다른 expander (계층 구조)
-                    with st.expander(f"📅 {y}년 ({year_total}작품)"):
+                    with st.expander(f"{y}년 ({year_total}작품)"):
                         # 분기 순서대로 표시
                         for s_val, s_lab in [("WINTER", "1분기"), ("SPRING", "2분기"), ("SUMMER", "3분기"), ("FALL", "4분기")]:
                             count = quarterly_stats.get((y, s_val), 0)

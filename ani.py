@@ -208,8 +208,8 @@ st.markdown("""
         white-space: nowrap !important;
         font-size: 0.7rem !important;
     }
-    /* 텍스트 링크 스타일 버튼 */
-    .text-link-wrapper button {
+    /* 사이드바 내 중첩된 익스팬더(분기별 통계)의 버튼을 링크 스타일로 변경 */
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button {
         background: transparent !important;
         border: none !important;
         padding: 0 !important;
@@ -225,7 +225,7 @@ st.markdown("""
         min-height: 0 !important;
         box-shadow: none !important;
     }
-    .text-link-wrapper button:hover {
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button:hover {
         color: #ff4b4b !important;
         text-decoration: none !important;
     }
@@ -1060,12 +1060,10 @@ with st.sidebar:
                                 # 분기 클릭 시 필터 적용을 위한 버튼 레이아웃
                                 col_q_name, col_q_stat = st.columns([1, 1])
                                 with col_q_name:
-                                    st.markdown('<div class="text-link-wrapper">', unsafe_allow_html=True)
                                     if st.button(f"🔍 {s_lab}", key=f"q_filter_btn_{y}_{s_val}"):
                                         st.session_state.year_filter = y
                                         st.session_state.season_filter = s_lab
                                         st.rerun()
-                                    st.markdown('</div>', unsafe_allow_html=True)
                                 with col_q_stat:
                                     st.markdown(f"""
                                     <div style="text-align: right; padding-top: 5px;">

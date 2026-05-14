@@ -1085,13 +1085,13 @@ with st.sidebar:
                                 
                                 # 분기 클릭 시 필터 적용 및 통계 표시 (커스텀 HTML 레이아웃으로 오버플로우 방지)
                                 st.markdown(f"""
-                                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 5px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #eee;">
                                     <div style="flex: 0 0 auto;">
-                                        <a href="?year_filter={y}&season_filter={s_lab}" target="_self" style="text-decoration: none; color: #666; font-size: 0.85rem;">{s_lab}</a>
+                                        <a href="?year_filter={y}&season_filter={s_lab}" target="_self" style="text-decoration: none; color: inherit; font-weight: 600; font-size: 0.9rem;">{s_lab}</a>
                                     </div>
-                                    <div class="q-stat-text" style="flex: 1; text-align: right; margin-left: 10px;">
-                                        <span style="color: #2e7d32; font-weight: bold;">{count}작품</span>
-                                        <span style="color: #f39c12; margin-left: 5px;">★{q_avg:.2f}</span>
+                                    <div class="q-stat-text" style="text-align: right;">
+                                        <span style="color: #2e7d32; font-size: 0.85rem; font-weight: bold;">{count}작품</span>
+                                        <span style="color: #f39c12; font-size: 0.85rem; margin-left: 8px;">★ {q_avg:.2f}</span>
                                     </div>
                                 </div>
                                 """, unsafe_allow_html=True)

@@ -1060,10 +1060,12 @@ with st.sidebar:
                                 # 분기 클릭 시 필터 적용을 위한 버튼 레이아웃
                                 col_q_name, col_q_stat = st.columns([1, 1])
                                 with col_q_name:
-                                    if st.button(f"🔍 {s_lab}", key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
+                                    st.markdown('<div class="text-link-wrapper">', unsafe_allow_html=True)
+                                    if st.button(f"🔍 {s_lab}", key=f"q_filter_btn_{y}_{s_val}"):
                                         st.session_state.year_filter = y
                                         st.session_state.season_filter = s_lab
                                         st.rerun()
+                                    st.markdown('</div>', unsafe_allow_html=True)
                                 with col_q_stat:
                                     st.markdown(f"""
                                     <div style="text-align: right; padding-top: 5px;">

@@ -240,12 +240,21 @@ st.markdown("""
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         align-items: center !important;
-        gap: 8px !important;
+        justify-content: space-between !important;
+        gap: 4px !important;
+        width: 100% !important;
     }
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="column"] {
-        width: auto !important;
-        flex: 1 1 0% !important;
+        padding: 0 !important;
         min-width: 0 !important;
+        width: auto !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="column"]:nth-child(1) {
+        flex: 0 0 auto !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="column"]:nth-child(2) {
+        flex: 1 1 auto !important;
+        text-align: right !important;
     }
 </style>
 """, unsafe_allow_html=True)

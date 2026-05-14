@@ -208,30 +208,38 @@ st.markdown("""
         white-space: nowrap !important;
         font-size: 0.7rem !important;
     }
-    /* 사이드바 내 중첩된 익스팬더(분기별 통계)의 버튼을 링크 스타일로 변경 */
+    /* 사이드바 내 중첩된 익스팬더(분기별 통계)의 버튼을 분기 배지 스타일로 변경 */
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button {
-        background: transparent !important;
-        border: none !important;
-        padding: 0 !important;
+        background: rgba(76, 175, 80, 0.1) !important;
+        border: 1px solid rgba(76, 175, 80, 0.2) !important;
+        padding: 2px 8px !important;
         margin: 0 !important;
-        color: #666 !important;
+        color: #4CAF50 !important;
         text-decoration: none !important;
-        text-align: left !important;
+        text-align: center !important;
         font-size: 0.85rem !important;
-        font-weight: normal !important;
-        display: inline !important;
+        font-weight: 600 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
         width: auto !important;
-        height: auto !important;
+        height: 1.6rem !important;
         min-height: 0 !important;
         box-shadow: none !important;
+        border-radius: 4px !important;
+        white-space: nowrap !important;
     }
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button div p {
         font-size: 0.85rem !important;
-        font-weight: normal !important;
+        font-weight: 600 !important;
         color: inherit !important;
+        margin: 0 !important;
+        line-height: 1 !important;
     }
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button:hover {
-        color: #ff4b4b !important;
+        background: rgba(76, 175, 80, 0.2) !important;
+        border-color: rgba(76, 175, 80, 0.4) !important;
+        color: #2e7d32 !important;
         text-decoration: none !important;
     }
 
@@ -1098,21 +1106,20 @@ with st.sidebar:
                                 r_sum, count = q_data
                                 q_avg = r_sum / count
                                 
-                                # 분기 클릭 시 필터 적용 및 통계 표시 (커스텀 HTML 레이아웃)
-                                st.markdown(f"""
-                                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 8px; padding: 4px 0;">
-                                    <div style="flex: 0 0 auto;">
-                                        <a href="?year_filter={y}&season_filter={s_lab}" target="_self" 
-                                           style="text-decoration: none; color: #4CAF50; font-size: 0.9rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: rgba(76, 175, 80, 0.1);">
-                                           {s_lab}
-                                        </a>
-                                    </div>
-                                    <div class="q-stat-text" style="flex: 1; text-align: right; margin-left: 10px;">
+                                # 분기 클릭 시 필터 적용 및 통계 표시 (st.button 사용으로 새로고침 방지)
+                                q_col1, q_col2 = st.columns([1, 2], gap="small")
+                                with q_col1:
+                                    if st.button(s_lab, key=f"q_btn_{y}_{s_val}"):
+                                        st.session_state.year_filter = y
+                                        st.session_state.season_filter = s_lab
+                                        st.rerun()
+                                with q_col2:
+                                    st.markdown(f"""
+                                    <div class="q-stat-text" style="text-align: right; margin-top: 4px;">
                                         <span style="color: #2e7d32; font-weight: bold;">{count}작품</span>
                                         <span style="color: #f39c12; margin-left: 5px;">★{q_avg:.2f}</span>
                                     </div>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                    """, unsafe_allow_html=True)
             else:
                 st.caption("시청 완료 데이터가 없습니다.")
 

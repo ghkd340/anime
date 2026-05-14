@@ -215,7 +215,7 @@ st.markdown("""
         padding: 0 !important;
         margin: 0 !important;
         color: #2e67ff !important;
-        text-decoration: underline !important;
+        text-decoration: none !important;
         text-align: left !important;
         font-size: 0.85rem !important;
         font-weight: normal !important;
@@ -1060,7 +1060,7 @@ with st.sidebar:
                                 # 분기 클릭 시 필터 적용을 위한 버튼 레이아웃
                                 col_q_name, col_q_stat = st.columns([1, 1])
                                 with col_q_name:
-                                    if st.button(f"🔍 {s_lab}", key=f"q_filter_btn_{y}_{s_val}"):
+                                    if st.button(f"{s_lab}", key=f"q_filter_btn_{y}_{s_val}"):
                                         st.session_state.year_filter = y
                                         st.session_state.season_filter = s_lab
                                         st.rerun()

@@ -1035,15 +1035,21 @@ with st.sidebar:
                             if q_data and isinstance(q_data, (list, tuple)):
                                 r_sum, count = q_data
                                 q_avg = r_sum / count
-                                st.markdown(f"""
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1px dashed #eee;">
-                                    <span style="font-size: 0.85rem;">{s_lab}</span>
-                                    <div style="text-align: right;">
+                                
+                                # 분기 클릭 시 필터 적용을 위한 버튼 레이아웃
+                                col_q_name, col_q_stat = st.columns([1, 1])
+                                with col_q_name:
+                                    if st.button(f"🔍 {s_lab}", key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
+                                        st.session_state.year_filter = y
+                                        st.session_state.season_filter = s_lab
+                                        st.rerun()
+                                with col_q_stat:
+                                    st.markdown(f"""
+                                    <div style="text-align: right; padding-top: 5px;">
                                         <span style="color: #2e7d32; font-size: 0.85rem; font-weight: bold;">{count}작품</span>
-                                        <span style="color: #f39c12; font-size: 0.85rem; margin-left: 8px;">★ {q_avg:.2f}</span>
+                                        <span style="color: #f39c12; font-size: 0.85rem; margin-left: 5px;">★{q_avg:.2f}</span>
                                     </div>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                    """, unsafe_allow_html=True)
             else:
                 st.caption("시청 완료 데이터가 없습니다.")
 

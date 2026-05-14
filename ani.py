@@ -234,6 +234,16 @@ st.markdown("""
         color: #ff4b4b !important;
         text-decoration: none !important;
     }
+    /* 분기별 통계 모바일 한 줄 유지 */
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="column"] {
+        width: auto !important;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 

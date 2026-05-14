@@ -1100,6 +1100,8 @@ with st.sidebar:
                                 if st.button(f"선택: {s_lab}", key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
                                     st.session_state.year_filter = y
                                     st.session_state.season_filter = s_lab
+                                    if st.session_state.logged_in:
+                                        st.session_state.watch_filter = "본 작품만"
                                     st.rerun()
             else:
                 st.caption("시청 완료 데이터가 없습니다.")

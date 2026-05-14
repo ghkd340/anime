@@ -447,6 +447,8 @@ def fetch_metadata_from_api(missing_ids):
           episodes
           duration
           genres
+          season
+          seasonYear
           relations {
             edges {
               relationType(version: 2)
@@ -468,6 +470,8 @@ def fetch_metadata_from_api(missing_ids):
                     'episodes': m.get('episodes') or 0,
                     'duration': m.get('duration') or 0,
                     'genres': m.get('genres', []),
+                    'season': m.get('season'),
+                    'seasonYear': m.get('seasonYear'),
                     'relations': m.get('relations', {}).get('edges', [])
                 }
         return chunk_data
@@ -869,6 +873,7 @@ with st.sidebar:
                         series_count = len(set(find(aid) for aid in watched_ids))
 
                         total_episodes = 0
+                        quarterly_stats = {} # {(year, season): count}
                         for aid, info in actually_watched.items():
                             meta = meta_map.get(aid)
                             rating = info.get('rating', 0)
@@ -877,6 +882,14 @@ with st.sidebar:
                                 eps = meta.get('episodes') or 0
                                 total_episodes += eps * count
                                 total_minutes += eps * (meta.get('duration') or 0) * count
+                                
+                                # 분기별 통계 수집
+                                y = meta.get('seasonYear')
+                                s = meta.get('season')
+                                if y:
+                                    q_key = (int(y), s)
+                                    quarterly_stats[q_key] = quarterly_stats.get(q_key, 0) + 1
+
                                 for g in meta.get('genres', []):
                                     if g == "Hentai": continue
                                     ko_g = KO_GENRE_MAP.get(g, g)
@@ -895,7 +908,8 @@ with st.sidebar:
                                 "total_episodes": total_episodes,
                                 "total_minutes": total_minutes,
                                 "sorted_genres": sorted_genres,
-                                "watched_count_stats": watched_count_stats
+                                "watched_count_stats": watched_count_stats,
+                                "quarterly_stats": quarterly_stats
                             }
                         }
                     else:
@@ -903,7 +917,7 @@ with st.sidebar:
                         st.session_state.stats_cache = {
                             "hash": current_hash,
                             "data": {
-                                "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": [], "watched_count_stats": 0
+                                "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": [], "watched_count_stats": 0, "quarterly_stats": {}
                             }
                         }
             else:
@@ -911,13 +925,13 @@ with st.sidebar:
                 st.session_state.stats_cache = {
                     "hash": current_hash,
                     "data": {
-                        "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": [], "watched_count_stats": 0
+                        "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": [], "watched_count_stats": 0, "quarterly_stats": {}
                     }
                 }
 
         # 캐시된 데이터 사용
         stats = st.session_state.stats_cache["data"] or {
-            "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": [], "watched_count_stats": 0
+            "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": [], "watched_count_stats": 0, "quarterly_stats": {}
         }
         avg_score = stats["avg_score"]
         series_count = stats["series_count"]
@@ -925,6 +939,7 @@ with st.sidebar:
         total_minutes = stats["total_minutes"]
         sorted_genres = stats["sorted_genres"]
         watched_count_display = stats.get("watched_count_stats", 0)
+        quarterly_stats = stats.get("quarterly_stats", {})
 
         # 1. 시청 시간 단위 설정 (팝오버로 분리하여 레이아웃 깨짐 방지)
         st.write("<div style='height: 10px;'></div>", unsafe_allow_html=True)
@@ -998,6 +1013,22 @@ with st.sidebar:
                     """, unsafe_allow_html=True)
             else:
                 st.caption("데이터가 없습니다.")
+
+        with st.expander("📅 분기별 시청 통계"):
+            if quarterly_stats:
+                # 연도별 내림차순 정렬
+                years_sorted = sorted(set(y for y, s in quarterly_stats.keys()), reverse=True)
+                for y in years_sorted:
+                    s_data = []
+                    # 분기 순서대로 표시
+                    for s_val, s_lab in [("WINTER", "1분기"), ("SPRING", "2분기"), ("SUMMER", "3분기"), ("FALL", "4분기")]:
+                        count = quarterly_stats.get((y, s_val), 0)
+                        if count > 0:
+                            s_data.append(f"**{s_lab}**({count})")
+                    if s_data:
+                        st.markdown(f"**{y}년**: {' '.join(s_data)}", unsafe_allow_html=True)
+            else:
+                st.caption("시청 완료 데이터가 없습니다.")
 
         # --- 데이터 내보내기/가져오기 섹션 ---
         with st.expander("💾 데이터 내보내기/가져오기"):

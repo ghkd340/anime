@@ -242,23 +242,32 @@ st.markdown("""
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         align-items: center !important;
-        gap: 0px !important;
+        justify-content: space-between !important;
+        gap: 2px !important;
         width: 100% !important;
     }
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="column"] {
         padding: 0 !important;
+        margin: 0 !important;
         min-width: 0 !important;
         flex: 1 1 auto !important;
     }
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="column"]:first-child {
         flex: 0 0 auto !important;
+        max-width: 35% !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="column"]:last-child {
+        flex: 1 1 auto !important;
+        display: flex !important;
+        justify-content: flex-end !important;
     }
     .q-stat-text {
         white-space: nowrap !important;
-        font-size: 0.8rem !important;
+        font-size: 0.72rem !important;
         text-align: right !important;
-        display: block !important;
-        width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 4px !important;
         color: #666;
     }
 </style>
@@ -1105,7 +1114,7 @@ with st.sidebar:
                                 q_avg = r_sum / count
                                 
                                 # 분기 클릭 시 필터 적용 (st.button 사용하여 페이지 새로고침 방지)
-                                col_q_name, col_q_stat = st.columns([1, 2])
+                                col_q_name, col_q_stat = st.columns([1, 1.5])
                                 with col_q_name:
                                     if st.button(f"{s_lab}", key=f"q_filter_btn_{y}_{s_val}"):
                                         st.session_state.year_filter = y
@@ -1115,7 +1124,7 @@ with st.sidebar:
                                     st.markdown(f"""
                                     <div class="q-stat-text">
                                         <span style="color: #2e7d32; font-weight: bold;">{count}작품</span>
-                                        <span style="color: #f39c12; margin-left: 5px;">★{q_avg:.2f}</span>
+                                        <span style="color: #f39c12;">★{q_avg:.2f}</span>
                                     </div>
                                     """, unsafe_allow_html=True)
             else:

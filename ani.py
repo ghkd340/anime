@@ -222,40 +222,6 @@ st.markdown("""
         min-width: fit-content !important;
     }
     
-    /* 방법 2: 버튼 모양을 유지하면서 내부 글자 색상만 정밀 조절하기 위한 CSS */
-    .stat-btn-wrapper {
-        position: relative;
-        width: 100%;
-        margin-bottom: 8px;
-    }
-    .stat-btn-display {
-        background-color: transparent;
-        border: 1px solid rgba(49, 51, 63, 0.2);
-        border-radius: 0.5rem;
-        padding: 6px 12px;
-        font-size: 0.85rem;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        pointer-events: none; /* 클릭은 위쪽의 투명 버튼이 처리 */
-        height: 38.4px; /* Streamlit 기본 버튼 높이 */
-        box-sizing: border-box;
-    }
-    .stat-btn-overlay button {
-        position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        background: transparent !important;
-        border: none !important;
-        color: transparent !important;
-        z-index: 10 !important;
-        box-shadow: none !important;
-    }
-    .stat-btn-overlay button:hover {
-        background: rgba(49, 51, 63, 0.05) !important; /* 살짝 어두워지는 호버 효과 */
-    }
     .q-stat-text {
         white-space: nowrap !important;
         font-size: 0.8rem !important;
@@ -1099,26 +1065,13 @@ with st.sidebar:
                                 r_sum, count = q_data
                                 q_avg = r_sum / count
                                 
-                                # 방법 2: 버튼 모양을 유지하면서 정밀한 색상 적용
-                                # 래퍼 div로 버튼 영역 확보
-                                st.markdown(f"""
-                                <div class="stat-btn-wrapper">
-                                    <div class="stat-btn-display">
-                                        <span style="color: #666;">{s_lab}</span>
-                                        <span style="color: #2e7d32; font-weight: bold; margin-left: 5px;">({count}작품</span>
-                                        <span style="color: #666; margin: 0 2px;">|</span>
-                                        <span style="color: #f39c12; font-weight: bold;">★{q_avg:.2f})</span>
-                                    </div>
-                                    <div class="stat-btn-overlay">
-                                """, unsafe_allow_html=True)
-                                
-                                # 실제 클릭 기능을 담당하는 투명 버튼
-                                if st.button(f"Hidden_{y}_{s_val}", key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
+                                # 버튼 하나로 통계 표시와 선택 기능을 통합하여 UI 간소화
+                                # 요청하신 형식 '분기(작품수|별점)'에 맞춰 텍스트 구성
+                                btn_label = f"{s_lab}(:green[{count}작품]|:orange[★{q_avg:.2f}])"
+                                if st.button(btn_label, key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
                                     st.session_state.year_filter = y
                                     st.session_state.season_filter = s_lab
                                     st.rerun()
-                                    
-                                st.markdown("</div></div>", unsafe_allow_html=True)
             else:
                 st.caption("시청 완료 데이터가 없습니다.")
 

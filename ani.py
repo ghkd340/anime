@@ -823,8 +823,8 @@ with st.sidebar:
             st.session_state.stats_cache = {"hash": None, "data": None}
             
         # 현재 시청 목록의 상태를 나타내는 해시 생성 (ID, 평점, 시청 횟수 포함하여 변경 시 통계 재계산)
-        # v2: 분기별 통계 정보 추가 대응을 위해 해시 시드 변경
-        current_hash = hash(("v2", frozenset((k, v.get('rating', 0), v.get('count', 1)) for k, v in current_watched.items())))
+        # v3: 분기별 통계 데이터 구조 변경 (int -> list) 대응
+        current_hash = hash(("v3", frozenset((k, v.get('rating', 0), v.get('count', 1)) for k, v in current_watched.items())))
         
         if st.session_state.stats_cache["hash"] != current_hash:
             if watched_count > 0:
@@ -1031,7 +1031,8 @@ with st.sidebar:
                         # 분기 순서대로 표시
                         for s_val, s_lab in [("WINTER", "1분기"), ("SPRING", "2분기"), ("SUMMER", "3분기"), ("FALL", "4분기")]:
                             q_data = quarterly_stats.get((y, s_val))
-                            if q_data:
+                            # q_data가 리스트/튜플 형태인 경우에만 처리 (캐시 불일치 방어)
+                            if q_data and isinstance(q_data, (list, tuple)):
                                 r_sum, count = q_data
                                 q_avg = r_sum / count
                                 st.markdown(f"""

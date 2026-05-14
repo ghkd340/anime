@@ -1365,42 +1365,70 @@ with st.sidebar:
 
     st.divider()
     if st.button("🎲 랜덤 추천 받기", use_container_width=True, type="primary"):
-        with st.spinner("랜덤 작품 찾는 중..."):
-            # 필터링 조건 정리
-            target_ids = None
-            exclude_ids = None
-            current_watched = st.session_state.watched_list or {}
-            
-            if only_w:
-                target_ids = [aid for aid, info in current_watched.items() if info.get('status', 'watched') == 'watched']
-                if not target_ids: target_ids = [0]
-                else: target_ids = target_ids[:500]
-            
-            if only_wish:
-                target_ids = [aid for aid, info in current_watched.items() if info.get('status') == 'wish']
-                if not target_ids: target_ids = [0]
-                else: target_ids = target_ids[:500]
-            
-            if only_not_w:
-                exclude_ids = list(current_watched.keys())
+        with st.spinner("조건에 맞는 랜덤 작품 찾는 중..."):
+            # 1. 시청/보관함 작품은 로컬 엔진으로 100% 정확하게 처리
+            if only_w or only_wish:
+                current_watched = st.session_state.watched_list or {}
+                if only_w:
+                    t_ids = [aid for aid, info in current_watched.items() if info.get('status', 'watched') == 'watched' and info.get('rating', 0) >= s_rating]
+                else:
+                    t_ids = [aid for aid, info in current_watched.items() if info.get('status') == 'wish']
+
+                if t_ids:
+                    m_map = get_watched_metadata(t_ids)
+                    f_media = []
+                    for aid in t_ids:
+                        meta = m_map.get(aid)
+                        if not meta: continue
+                        if s_year and meta.get('seasonYear') != s_year: continue
+                        if s_season and meta.get('season') != s_season: continue
+                        m_genres = meta.get('genres', [])
+                        if s_genres and not all(g in m_genres for g in s_genres): continue
+                        if s_ex_genres and any(g in m_genres for g in s_ex_genres): continue
+                        if new_search:
+                            titles = meta.get('title', {})
+                            t_native = (titles.get('native') or "").lower()
+                            t_romaji = (titles.get('romaji') or "").lower()
+                            q = new_search.lower()
+                            if q not in t_native and q not in t_romaji: continue
+
+                        f_media.append({
+                            'id': aid, 'title': meta['title'], 'coverImage': meta.get('coverImage', {}),
+                            'averageScore': meta.get('averageScore', 0), 'popularity': meta.get('popularity', 0),
+                            'season': meta.get('season'), 'seasonYear': meta.get('seasonYear'),
+                            'format': meta.get('format', 'TV'), 'genres': meta.get('genres', []),
+                            'siteUrl': meta.get('siteUrl'), 'startDate': meta.get('startDate', {})
+                        })
+
+                    if f_media:
+                        random.shuffle(f_media)
+                        st.session_state.all_media = f_media[:24]
+                        st.session_state.is_random_mode = True
+                        st.rerun()
+                    else:
+                        st.warning("조건에 맞는 시청/보관 작품이 없습니다.")
+                else:
+                    st.warning("데이터가 없습니다.")
+
+            # 2. 일반 모드는 API 기반 랜덤 추천 (필터 적용)
+            else:
+                exclude_ids = list(st.session_state.watched_list.keys()) if only_not_w and st.session_state.watched_list else None
                 if exclude_ids: exclude_ids = exclude_ids[:500]
 
-            random_data = fetch_random_anime(
-                s_year, s_season, s_genres, s_ex_genres,
-                new_search if new_search else None,
-                ids=target_ids,
-                exclude_ids=exclude_ids,
-                include_adult=s_adult
-            )
-            
-            if random_data:
-                st.session_state.all_media = random_data['media']
-                st.session_state.is_random_mode = True
-                st.session_state.random_media = None
-                st.rerun()
-            else:
-                st.warning("조건에 맞는 작품이 없습니다.")
+                random_data = fetch_random_anime(
+                    s_year, s_season, s_genres, s_ex_genres,
+                    new_search if new_search else None,
+                    ids=None,
+                    exclude_ids=exclude_ids,
+                    include_adult=s_adult
+                )
 
+                if random_data:
+                    st.session_state.all_media = random_data['media']
+                    st.session_state.is_random_mode = True
+                    st.rerun()
+                else:
+                    st.warning("조건에 맞는 작품이 없습니다.")
     if st.session_state.is_random_mode:
         if st.button("🔙 일반 목록으로", use_container_width=True):
             st.session_state.is_random_mode = False

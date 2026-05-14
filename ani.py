@@ -214,7 +214,7 @@ st.markdown("""
         border: none !important;
         padding: 0 !important;
         margin: 0 !important;
-        color: #2e67ff !important;
+        color: #666 !important;
         text-decoration: none !important;
         text-align: left !important;
         font-size: 0.85rem !important;
@@ -224,6 +224,11 @@ st.markdown("""
         height: auto !important;
         min-height: 0 !important;
         box-shadow: none !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button div p {
+        font-size: 0.85rem !important;
+        font-weight: normal !important;
+        color: inherit !important;
     }
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button:hover {
         color: #ff4b4b !important;

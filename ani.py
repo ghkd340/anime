@@ -1092,7 +1092,8 @@ with st.sidebar:
                                 q_avg = r_sum / count
                                 
                                 # 버튼 하나로 통계 표시와 선택 기능을 통합하여 UI 간소화
-                                btn_label = f"{s_lab} ({count}작품 | ★{q_avg:.2f})"
+                                # 작품수는 초록색(:green[]), 별점은 노란색(:orange[])으로 표시 (Streamlit 컬러 문법 활용)
+                                btn_label = f"{s_lab} (:green[{count}작품] | :orange[★{q_avg:.2f}])"
                                 if st.button(btn_label, key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
                                     st.session_state.year_filter = y
                                     st.session_state.season_filter = s_lab

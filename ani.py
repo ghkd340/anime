@@ -1021,14 +1021,21 @@ with st.sidebar:
                 # 연도별 내림차순 정렬
                 years_sorted = sorted(set(y for y, s in quarterly_stats.keys()), reverse=True)
                 for y in years_sorted:
-                    s_data = []
-                    # 분기 순서대로 표시
-                    for s_val, s_lab in [("WINTER", "1분기"), ("SPRING", "2분기"), ("SUMMER", "3분기"), ("FALL", "4분기")]:
-                        count = quarterly_stats.get((y, s_val), 0)
-                        if count > 0:
-                            s_data.append(f"**{s_lab}**({count})")
-                    if s_data:
-                        st.markdown(f"**{y}년**: {' '.join(s_data)}", unsafe_allow_html=True)
+                    # 해당 연도의 총 작품 수 계산
+                    year_total = sum(count for (yr, s), count in quarterly_stats.items() if yr == y)
+                    
+                    # 연도별로 또 다른 expander (계층 구조)
+                    with st.expander(f"📅 {y}년 ({year_total}작품)"):
+                        # 분기 순서대로 표시
+                        for s_val, s_lab in [("WINTER", "1분기"), ("SPRING", "2분기"), ("SUMMER", "3분기"), ("FALL", "4분기")]:
+                            count = quarterly_stats.get((y, s_val), 0)
+                            if count > 0:
+                                st.markdown(f"""
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1px dashed #eee;">
+                                    <span style="font-size: 0.85rem;">{s_lab}</span>
+                                    <span style="color: #2e7d32; font-size: 0.85rem; font-weight: bold;">{count}작품</span>
+                                </div>
+                                """, unsafe_allow_html=True)
             else:
                 st.caption("시청 완료 데이터가 없습니다.")
 

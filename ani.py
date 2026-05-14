@@ -258,10 +258,11 @@ st.markdown("""
     }
     .q-stat-text {
         white-space: nowrap !important;
-        font-size: 0.8rem !important;
+        font-size: 0.75rem !important;
         text-align: right !important;
         display: block !important;
         width: 100% !important;
+        padding-right: 5px !important;
     }
 </style>
 """, unsafe_allow_html=True)

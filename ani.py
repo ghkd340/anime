@@ -1496,7 +1496,7 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                         if not data or not data['media']: break
                         
                         # 가져온 데이터 중 내가 본 것만 필터링
-                        watched_only = [m for m in data['media'] if m['id'] in current_watched and current_watched[m['id']].get('rating', 0) >= s_rating]
+                        watched_only = [m for m in data['media'] if m['id'] in current_watched and current_watched[m['id']].get('status', 'watched') == 'watched' and current_watched[m['id']].get('rating', 0) >= s_rating]
                         all_fetched.extend(watched_only)
                         
                         if not data['pageInfo']['hasNextPage'] or len(all_fetched) >= 500: break
@@ -1566,7 +1566,7 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                 
                 # 시청 여부 로컬 필터링
                 if only_w and has_active_filters:
-                    new_items = [m for m in new_items if m['id'] in current_watched and current_watched[m['id']].get('rating', 0) >= s_rating]
+                    new_items = [m for m in new_items if m['id'] in current_watched and current_watched[m['id']].get('status', 'watched') == 'watched' and current_watched[m['id']].get('rating', 0) >= s_rating]
                 elif only_not_w:
                     new_items = [m for m in new_items if m['id'] not in current_watched]
                 
@@ -1936,7 +1936,7 @@ else:
                 current_watched = st.session_state.watched_list or {}
                 
                 if only_w:
-                    target_ids = [aid for aid, info in current_watched.items() if info.get('rating', 0) >= s_rating]
+                    target_ids = [aid for aid, info in current_watched.items() if info.get('status', 'watched') == 'watched' and info.get('rating', 0) >= s_rating]
                     if not target_ids: target_ids = [0]
                     else: target_ids = target_ids[:500]
                 

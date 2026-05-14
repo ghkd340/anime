@@ -875,7 +875,7 @@ with st.sidebar:
                         series_count = len(set(find(aid) for aid in watched_ids))
 
                         total_episodes = 0
-                        quarterly_stats = {} # {(year, season): count}
+                        quarterly_stats = {} # {(year, season): [rating_sum, count]}
                         for aid, info in actually_watched.items():
                             meta = meta_map.get(aid)
                             rating = info.get('rating', 0)
@@ -890,7 +890,9 @@ with st.sidebar:
                                 s = meta.get('season')
                                 if y:
                                     q_key = (int(y), s)
-                                    quarterly_stats[q_key] = quarterly_stats.get(q_key, 0) + 1
+                                    if q_key not in quarterly_stats: quarterly_stats[q_key] = [0.0, 0]
+                                    quarterly_stats[q_key][0] += rating
+                                    quarterly_stats[q_key][1] += 1
 
                                 for g in meta.get('genres', []):
                                     if g == "Hentai": continue
@@ -1028,12 +1030,17 @@ with st.sidebar:
                     with st.expander(f"{y}년 ({year_total}작품)"):
                         # 분기 순서대로 표시
                         for s_val, s_lab in [("WINTER", "1분기"), ("SPRING", "2분기"), ("SUMMER", "3분기"), ("FALL", "4분기")]:
-                            count = quarterly_stats.get((y, s_val), 0)
-                            if count > 0:
+                            q_data = quarterly_stats.get((y, s_val))
+                            if q_data:
+                                r_sum, count = q_data
+                                q_avg = r_sum / count
                                 st.markdown(f"""
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1px dashed #eee;">
                                     <span style="font-size: 0.85rem;">{s_lab}</span>
-                                    <span style="color: #2e7d32; font-size: 0.85rem; font-weight: bold;">{count}작품</span>
+                                    <div style="text-align: right;">
+                                        <span style="color: #2e7d32; font-size: 0.85rem; font-weight: bold;">{count}작품</span>
+                                        <span style="color: #f39c12; font-size: 0.85rem; margin-left: 8px;">★ {q_avg:.2f}</span>
+                                    </div>
                                 </div>
                                 """, unsafe_allow_html=True)
             else:

@@ -208,6 +208,27 @@ st.markdown("""
         white-space: nowrap !important;
         font-size: 0.7rem !important;
     }
+    /* 텍스트 링크 스타일 버튼 */
+    .text-link-wrapper button {
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        color: #2e67ff !important;
+        text-decoration: underline !important;
+        text-align: left !important;
+        font-size: 0.85rem !important;
+        font-weight: normal !important;
+        display: inline !important;
+        width: auto !important;
+        height: auto !important;
+        min-height: 0 !important;
+        box-shadow: none !important;
+    }
+    .text-link-wrapper button:hover {
+        color: #ff4b4b !important;
+        text-decoration: none !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 

@@ -241,28 +241,19 @@ st.markdown("""
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         align-items: center !important;
-        justify-content: space-between !important;
-        gap: 0px !important;
+        gap: 8px !important;
         width: 100% !important;
     }
-    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="stHorizontalBlock"] > div {
+    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="column"] {
         padding: 0 !important;
-        min-width: 0 !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="stHorizontalBlock"] > div:nth-child(1) {
-        flex: 0 0 auto !important;
-        width: auto !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="stHorizontalBlock"] > div:nth-child(2) {
-        flex: 1 1 auto !important;
-        width: auto !important;
-        text-align: right !important;
-        overflow: hidden !important;
+        min-width: fit-content !important;
     }
     .q-stat-text {
         white-space: nowrap !important;
-        font-size: 0.75rem !important;
+        font-size: 0.8rem !important;
         text-align: right !important;
+        display: block !important;
+        width: 100% !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1093,7 +1084,7 @@ with st.sidebar:
                                 q_avg = r_sum / count
                                 
                                 # 분기 클릭 시 필터 적용을 위한 버튼 레이아웃
-                                col_q_name, col_q_stat = st.columns([1.2, 3], gap="small")
+                                col_q_name, col_q_stat = st.columns([1, 2])
                                 with col_q_name:
                                     if st.button(f"{s_lab}", key=f"q_filter_btn_{y}_{s_val}"):
                                         st.session_state.year_filter = y
@@ -1103,7 +1094,7 @@ with st.sidebar:
                                     st.markdown(f"""
                                     <div class="q-stat-text">
                                         <span style="color: #2e7d32; font-weight: bold;">{count}작품</span>
-                                        <span style="color: #f39c12; margin-left: 3px;">★{q_avg:.2f}</span>
+                                        <span style="color: #f39c12; margin-left: 5px;">★{q_avg:.2f}</span>
                                     </div>
                                     """, unsafe_allow_html=True)
             else:

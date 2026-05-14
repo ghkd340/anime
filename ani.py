@@ -1023,8 +1023,8 @@ with st.sidebar:
                 # 연도별 내림차순 정렬
                 years_sorted = sorted(set(y for y, s in quarterly_stats.keys()), reverse=True)
                 for y in years_sorted:
-                    # 해당 연도의 총 작품 수 계산
-                    year_total = sum(count for (yr, s), count in quarterly_stats.items() if yr == y)
+                    # 해당 연도의 총 작품 수 계산 (리스트 형태와 단일 숫자 형태 모두 대응)
+                    year_total = sum((d[1] if isinstance(d, (list, tuple)) else d) for (yr, s), d in quarterly_stats.items() if yr == y)
                     
                     # 연도별로 또 다른 expander (계층 구조)
                     with st.expander(f"{y}년 ({year_total}작품)"):

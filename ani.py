@@ -56,6 +56,7 @@ st.markdown("""
         font-size: 0.85rem; color: var(--text-color); font-style: italic;
         height: 65px; overflow-y: auto;
         box-sizing: border-box;
+        white-space: pre-line;
     }
     .empty-comment-box {
         height: 65px; margin-bottom: 10px;

@@ -157,58 +157,7 @@ st.markdown("""
         font-size: 0.85rem; font-weight: 600; white-space: nowrap;
         overflow: hidden; text-overflow: ellipsis; flex-grow: 1;
     }
-    /* 팝오버 너비 고정 및 장르 줄바꿈 설정 */
-    div[data-testid="stPopoverBody"] {
-        max-width: 280px !important;
-        min-width: 240px !important;
-    }
-    div[data-testid="stPopoverBody"] .stMarkdown {
-        word-break: normal !important;
-        white-space: normal !important;
-    }
-    .genre-tag {
-        display: inline-block;
-        background-color: rgba(128, 128, 128, 0.1);
-        border: 1px solid rgba(128, 128, 128, 0.2);
-        padding: 0 8px;
-        border-radius: 4px;
-        font-size: 0.75rem;
-        font-weight: 500;
-        height: 1.4rem;
-        line-height: 1.4rem;
-        margin-right: 4px;
-        margin-bottom: 4px;
-        white-space: nowrap;
-        color: inherit !important;
-        text-decoration: none !important;
-        transition: all 0.2s;
-    }
-    .genre-tag:hover {
-        background-color: rgba(255, 75, 75, 0.1) !important;
-        border-color: rgba(255, 75, 75, 0.3) !important;
-        color: #ff4b4b !important;
-        cursor: pointer !important;
-    }
-    /* 상세 팝오버 내 장르 버튼(컬럼 내부) 크기 축소 및 줄바꿈 방지 */
-    div[data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"] button {
-        padding: 0px 2px !important;
-        min-height: 1.7rem !important;
-        height: 1.7rem !important;
-        font-size: 0.7rem !important;
-        line-height: 1 !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-    }
-    div[data-testid="stPopoverBody"] [data-testid="column"] {
-        padding: 1px !important;
-    }
-    div[data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"] {
-        gap: 4px !important;
-    }
-    div[data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"] button div p {
-        white-space: nowrap !important;
-        font-size: 0.7rem !important;
-    }
+    
     /* 사이드바 내 중첩된 익스팬더(분기별 통계)의 버튼을 링크 스타일로 변경 */
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button {
         background: transparent !important;
@@ -255,6 +204,80 @@ st.markdown("""
         text-align: right !important;
         display: block !important;
         width: 100% !important;
+    }
+
+    /* AniList 스타일 캐릭터 & 성우 팝업 그리드 디자인 */
+    .char-grid-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 12px;
+        margin-top: 10px;
+    }
+    .char-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: stretch;
+        background: rgba(128, 128, 128, 0.08);
+        border-radius: 6px;
+        overflow: hidden;
+        height: 72px;
+        box-sizing: border-box;
+    }
+    .char-side, .va-side {
+        display: flex;
+        align-items: center;
+        width: 50%;
+        gap: 8px;
+    }
+    .va-side {
+        justify-content: flex-end;
+    }
+    .char-img, .va-img {
+        width: 54px !important;
+        height: 72px !important;
+        object-fit: cover !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        flex-shrink: 0;
+    }
+    .char-meta, .va-meta {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 8px 0;
+        height: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    .va-meta {
+        text-align: right;
+    }
+    .char-name {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .va-name {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #3ba0ff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .char-sub, .va-sub {
+        font-size: 0.72rem;
+        color: var(--secondary-text-color);
+    }
+    
+    /* 탭 헤더 스타일 */
+    div[data-testid="stTabs"] button {
+        font-size: 0.95rem !important;
+        font-weight: 600 !important;
+        padding: 8px 16px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -714,14 +737,28 @@ run_auth_shield()
 
 MAX_SAFE_PAGE = 200
 
-# 6. API 호출 (캐싱)
+# 6. API 호출 (캐싱 및 캐릭터/성우 데이터 조회)
 @st.cache_data(ttl=3600)
 def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False, per_page=24, show_error=True):
     if page * per_page > 4800:
         return None
     
     url = 'https://graphql.anilist.co'
-    media_fields = "id title { native romaji } coverImage { extraLarge large } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres"
+    media_fields = """id title { native romaji } coverImage { extraLarge large } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres
+    characters(sort: ROLE, perPage: 12) {
+      edges {
+        role
+        node {
+          name { full native }
+          image { medium }
+        }
+        voiceActors(language: JAPANESE) {
+          name { full native }
+          image { medium }
+          languageV2
+        }
+      }
+    }"""
     
     if isinstance(sort, str):
         sort = [sort]
@@ -819,6 +856,196 @@ def fetch_random_anime(year=None, season=None, genres=None, ex_genres=None, sear
             return result
     
     return None
+
+# --- 통합 모달 팝업 대화상자 (탭 구성) ---
+@st.dialog("🎬 작품 상세 및 관리", width="large")
+def show_anime_modal_dialog(anime):
+    a_id = anime['id']
+    title = anime['title']['native'] or anime['title']['romaji']
+    
+    tab_overview, tab_characters, tab_watch, tab_record = st.tabs([
+        "Overview (개요)", 
+        "Characters (성우/등장인물)", 
+        "Watch (시청 플랫폼)", 
+        "Record (기록 & 평점)"
+    ])
+    
+    # 1. 개요 탭 (장르 태그, AniList 링크, 이름으로 검색)
+    with tab_overview:
+        st.markdown(f"#### {title}")
+        genres = [g for g in anime.get('genres', []) if g != "Hentai"]
+        if genres:
+            st.markdown("**🏷️ 장르 선택 (클릭 시 필터 추가)**")
+            g_cols = st.columns(4)
+            for idx, g in enumerate(genres):
+                ko_g = KO_GENRE_MAP.get(g, g)
+                with g_cols[idx % 4]:
+                    if st.button(ko_g, key=f"dlg_g_btn_{a_id}_{g}", use_container_width=True):
+                        if ko_g not in st.session_state.genre_filter:
+                            st.session_state.genre_to_add = ko_g
+                            st.rerun()
+            st.write("")
+        
+        c_link1, c_link2 = st.columns(2)
+        with c_link1:
+            st.link_button("🌐 AniList 페이지 바로가기", anime['siteUrl'], use_container_width=True)
+        with c_link2:
+            if st.button("🔍 이 작품 제목으로 검색하기", key=f"dlg_btn_search_{a_id}", use_container_width=True, type="primary"):
+                st.query_params["q"] = title
+                st.session_state.all_media = []
+                st.session_state.page = 1
+                st.rerun()
+
+    # 2. 성우 / 캐릭터 탭 (AniList 스타일 사진 카드 그리드)
+    with tab_characters:
+        char_edges = anime.get('characters', {}).get('edges', [])
+        if not char_edges:
+            st.info("등록된 등장인물 및 성우 정보가 없습니다.")
+        else:
+            cards_html = '<div class="char-grid-container">'
+            for edge in char_edges:
+                char_node = edge.get('node', {})
+                char_name = char_node.get('name', {}).get('full') or char_node.get('name', {}).get('native') or "Unknown"
+                char_img = char_node.get('image', {}).get('medium') or "https://via.placeholder.com/60x80?text=No+Image"
+                role = edge.get('role', 'Main')
+                role_label = "Main" if role == "MAIN" else "Supporting"
+                
+                vas = edge.get('voiceActors', [])
+                if vas:
+                    va = vas[0]
+                    va_name = va.get('name', {}).get('full') or va.get('name', {}).get('native') or ""
+                    va_img = va.get('image', {}).get('medium') or "https://via.placeholder.com/60x80?text=No+Image"
+                    va_lang = va.get('languageV2', 'Japanese')
+                    va_part = f'<div class="va-meta"><div class="va-name" title="{va_name}">{va_name}</div><div class="va-sub">{va_lang}</div></div><img src="{va_img}" class="va-img" />'
+                else:
+                    va_part = '<div class="va-meta"><div class="va-sub">CV 정보 없음</div></div>'
+                    
+                card = f'<div class="char-card"><div class="char-side"><img src="{char_img}" class="char-img" /><div class="char-meta"><div class="char-name" title="{char_name}">{char_name}</div><div class="char-sub">{role_label}</div></div></div><div class="va-side">{va_part}</div></div>'
+                cards_html += card
+                
+            cards_html += '</div>'
+            st.markdown(cards_html, unsafe_allow_html=True)
+
+    # 3. 시청 플랫폼 탭 (동적 검색 링크)
+    with tab_watch:
+        st.markdown("**📺 플랫폼 검색 바로가기**")
+        encoded_title = urllib.parse.quote(title)
+        all_plat_map = dict(DEFAULT_PLATFORMS, **st.session_state.custom_platforms)
+        active_plats = [p for p in st.session_state.selected_platforms if p in all_plat_map]
+        
+        if active_plats:
+            p_cols = st.columns(2)
+            for idx, p_name in enumerate(active_plats):
+                target_template = all_plat_map[p_name]
+                target_url = target_template.format(query=encoded_title)
+                with p_cols[idx % 2]:
+                    st.link_button(f"🌐 {p_name}에서 검색", target_url, use_container_width=True)
+        else:
+            st.caption("선택된 플랫폼이 없습니다. 사이드바 설정(⚙️)에서 플랫폼을 추가하세요.")
+
+    # 4. 내 기록 & 평점 탭
+    with tab_record:
+        if not st.session_state.logged_in:
+            st.warning("🔒 시청 기록과 평점을 남기려면 사이드바에서 구글 로그인을 진행해주세요.")
+        else:
+            ac = st.session_state.action_cnt
+            current_watched = st.session_state.watched_list or {}
+            is_w = a_id in current_watched
+            w_data = current_watched.get(a_id, {}) if is_w else {}
+            status = w_data.get("status", "watched")
+            
+            if is_w and status == "watched":
+                st.markdown("##### ✍️ 시청 기록 수정")
+                u_score = st.slider("내 평점", 0.0, 5.0, round(float(w_data.get("rating", 5.0)), 1), 0.1, format="%.1f", key=f"dlg_score_edit_{a_id}_{ac}")
+                u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"dlg_count_edit_{a_id}_{ac}")
+                u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"dlg_comm_edit_{a_id}_{ac}")
+                
+                if st.button("업데이트", key=f"dlg_btn_update_{a_id}_{ac}", use_container_width=True, type="primary"):
+                    if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                    st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
+                    update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
+                    st.session_state.action_cnt += 1
+                    st.rerun()
+                    
+                st.divider()
+                if st.button("시청 기록 삭제", key=f"dlg_btn_delete_{a_id}_{ac}", use_container_width=True):
+                    if st.session_state.watched_list is not None:
+                        st.session_state.watched_list.pop(a_id, None)
+                    update_db(a_id, "remove")
+                    st.session_state.action_cnt += 1
+                    st.rerun()
+            elif is_w and (status == "wish" or status == "dropped"):
+                status_kr = "보관(볼 작품)" if status == "wish" else "하차 작품"
+                st.markdown(f"##### 📌 현재 상태: {status_kr}")
+                u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"dlg_score_wish_to_w_{a_id}_{ac}")
+                u_count = st.number_input("시청 횟수 / 마지막 화수", min_value=1, value=1, step=1, key=f"dlg_count_wish_to_w_{a_id}_{ac}")
+                u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"dlg_comm_wish_to_w_{a_id}_{ac}")
+                
+                if st.button("시청 완료로 기록", key=f"dlg_btn_wish_to_w_{a_id}_{ac}", use_container_width=True, type="primary"):
+                    if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                    st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
+                    update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
+                    st.session_state.action_cnt += 1
+                    st.rerun()
+                
+                bu1, bu2 = st.columns(2)
+                with bu1:
+                    if status == "wish":
+                        if st.button("하차로 변경", key=f"dlg_btn_wish_to_drop_{a_id}_{ac}", use_container_width=True):
+                            st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": u_count, "status": "dropped"}
+                            update_db(a_id, "add", 0.0, u_comment, u_count, status="dropped")
+                            st.session_state.action_cnt += 1
+                            st.rerun()
+                    elif status == "dropped":
+                        if st.button("보관으로 변경", key=f"dlg_btn_drop_to_wish_{a_id}_{ac}", use_container_width=True):
+                            st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": 0, "status": "wish"}
+                            update_db(a_id, "add", 0.0, u_comment, 0, status="wish")
+                            st.session_state.action_cnt += 1
+                            st.rerun()
+                
+                with bu2:
+                    if st.button("코멘트 업데이트", key=f"dlg_btn_comm_update_{a_id}_{ac}", use_container_width=True):
+                        st.session_state.watched_list[a_id]["comment"] = u_comment
+                        update_db(a_id, "add", 0.0, u_comment, w_data.get("count", 0), status=status)
+                        st.session_state.action_cnt += 1
+                        st.rerun()
+
+                st.divider()
+                del_label = "보관 취소" if status == "wish" else "하차 취소"
+                if st.button(del_label, key=f"dlg_btn_wish_del_{a_id}_{ac}", use_container_width=True):
+                    if st.session_state.watched_list is not None:
+                        st.session_state.watched_list.pop(a_id, None)
+                    update_db(a_id, "remove")
+                    st.session_state.action_cnt += 1
+                    st.rerun()
+            else:
+                st.markdown("##### ➕ 새로운 시청 기록 남기기")
+                u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"dlg_score_new_{a_id}_{ac}")
+                u_count = st.number_input("시청 횟수 / 마지막 화수", min_value=1, value=1, step=1, key=f"dlg_count_new_{a_id}_{ac}")
+                u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"dlg_comm_new_{a_id}_{ac}")
+                
+                if st.button("시청 완료 저장", key=f"dlg_btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
+                    if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                    st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
+                    update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
+                    st.session_state.action_cnt += 1
+                    st.rerun()
+                
+                bw1, bw2 = st.columns(2)
+                with bw1:
+                    if st.button("보관(볼 작품)", key=f"dlg_btn_wish_{a_id}_{ac}", use_container_width=True):
+                        if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                        st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": 0, "status": "wish"}
+                        update_db(a_id, "add", 0.0, u_comment, 0, status="wish")
+                        st.session_state.action_cnt += 1
+                        st.rerun()
+                with bw2:
+                    if st.button("하차", key=f"dlg_btn_drop_{a_id}_{ac}", use_container_width=True):
+                        if st.session_state.watched_list is None: st.session_state.watched_list = {}
+                        st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": u_count, "status": "dropped"}
+                        update_db(a_id, "add", 0.0, u_comment, u_count, status="dropped")
+                        st.session_state.action_cnt += 1
+                        st.rerun()
 
 # 5. 사이드바 UI
 with st.sidebar:
@@ -1651,142 +1878,11 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
 
-                c1, c2, c3 = st.columns(3, gap="small")
-                
-                # 상세 팝오버
-                with c1.popover("상세", use_container_width=True, key=f"pop_detail_{a_id}"):
-                    genres = [g for g in anime.get('genres', []) if g != "Hentai"]
-                    if genres:
-                        g_cols = st.columns(3, gap="small")
-                        for idx, g in enumerate(genres):
-                            ko_g = KO_GENRE_MAP.get(g, g)
-                            with g_cols[idx % 3]:
-                                if st.button(ko_g, key=f"g_btn_{a_id}_{g}", use_container_width=True):
-                                    if ko_g not in st.session_state.genre_filter:
-                                        st.session_state.genre_to_add = ko_g
-                                        st.rerun()
-                        st.write("")
+                # 카드 하단: 모든 상세 및 기록 기능을 하나로 통합한 팝업 버튼
+                btn_modal_label = "🎬 상세 정보 & 기록" if st.session_state.logged_in else "🎬 상세 정보"
+                if st.button(btn_modal_label, key=f"btn_open_dlg_{a_id}", use_container_width=True, type="primary"):
+                    show_anime_modal_dialog(anime)
 
-                    st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
-                    
-                    if st.button("🔍 이름으로 검색", key=f"btn_search_{a_id}", use_container_width=True, type="primary"):
-                        title = anime['title']['native'] or anime['title']['romaji']
-                        st.query_params["q"] = title
-                        st.session_state.all_media = []
-                        st.session_state.page = 1
-                        st.rerun()
-                
-                # 동적 플랫폼 검색 팝오버 (🔍)
-                with c2.popover("🔍", use_container_width=True, key=f"search_pop_{a_id}"):
-                    st.markdown("**📺 시청 플랫폼 선택**")
-                    search_title = anime['title']['native'] or anime['title']['romaji']
-                    encoded_title = urllib.parse.quote(search_title)
-                    
-                    all_plat_map = dict(DEFAULT_PLATFORMS, **st.session_state.custom_platforms)
-                    active_plats = [p for p in st.session_state.selected_platforms if p in all_plat_map]
-                    
-                    if active_plats:
-                        for p_name in active_plats:
-                            target_template = all_plat_map[p_name]
-                            target_url = target_template.format(query=encoded_title)
-                            st.link_button(f"🌐 {p_name} 검색", target_url, use_container_width=True)
-                    else:
-                        st.caption("선택된 플랫폼이 없습니다. 상단 설정(⚙️)에서 플랫폼을 추가하세요.")
-
-                if st.session_state.logged_in:
-                    ac = st.session_state.action_cnt
-                    pop_label = "수정" if is_w and status == "watched" else ("보관" if is_w and status == "wish" else ("하차" if is_w and status == "dropped" else "시청"))
-                    
-                    with c3.popover(pop_label, use_container_width=True, key=f"pop_act_{a_id}_{ac}"):
-                        if is_w and status == "watched":
-                            w_data = current_watched.get(a_id, {})
-                            u_score = st.slider("내 평점", 0.0, 5.0, round(float(w_data.get("rating", 5.0)), 1), 0.1, format="%.1f", key=f"score_edit_{a_id}_{ac}")
-                            u_count = st.number_input("시청 횟수", min_value=1, value=int(w_data.get("count", 1)), step=1, key=f"count_edit_{a_id}_{ac}")
-                            u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_edit_{a_id}_{ac}")
-                            
-                            if st.button("업데이트", key=f"btn_update_{a_id}_{ac}", use_container_width=True, type="primary"):
-                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
-                                update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
-                                st.session_state.action_cnt += 1
-                                st.rerun()
-                                
-                            st.divider()
-                            if st.button("시청 기록 삭제", key=f"btn_delete_{a_id}_{ac}", use_container_width=True):
-                                if st.session_state.watched_list is not None:
-                                    st.session_state.watched_list.pop(a_id, None)
-                                update_db(a_id, "remove")
-                                st.session_state.action_cnt += 1
-                                st.rerun()
-                        elif is_w and (status == "wish" or status == "dropped"):
-                            u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_wish_to_w_{a_id}_{ac}")
-                            u_count = st.number_input("시청 횟수", min_value=1, value=1, step=1, key=f"count_wish_to_w_{a_id}_{ac}")
-                            u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_wish_to_w_{a_id}_{ac}")
-                            
-                            if st.button("시청 완료로 기록", key=f"btn_wish_to_w_{a_id}_{ac}", use_container_width=True, type="primary"):
-                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
-                                update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
-                                st.session_state.action_cnt += 1
-                                st.rerun()
-                            
-                            bu1, bu2 = st.columns(2)
-                            with bu1:
-                                if status == "wish":
-                                    if st.button("하차로 변경", key=f"btn_wish_to_drop_{a_id}_{ac}", use_container_width=True):
-                                        st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": u_count, "status": "dropped"}
-                                        update_db(a_id, "add", 0.0, u_comment, u_count, status="dropped")
-                                        st.session_state.action_cnt += 1
-                                        st.rerun()
-                                elif status == "dropped":
-                                    if st.button("보관으로 변경", key=f"btn_drop_to_wish_{a_id}_{ac}", use_container_width=True):
-                                        st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": 0, "status": "wish"}
-                                        update_db(a_id, "add", 0.0, u_comment, 0, status="wish")
-                                        st.session_state.action_cnt += 1
-                                        st.rerun()
-                            
-                            with bu2:
-                                if st.button("코멘트 업데이트", key=f"btn_comm_update_{a_id}_{ac}", use_container_width=True):
-                                    st.session_state.watched_list[a_id]["comment"] = u_comment
-                                    update_db(a_id, "add", 0.0, u_comment, w_data.get("count", 0), status=status)
-                                    st.session_state.action_cnt += 1
-                                    st.rerun()
-
-                            st.divider()
-                            del_label = "보관 취소" if status == "wish" else "하차 취소"
-                            if st.button(del_label, key=f"btn_wish_del_{a_id}_{ac}", use_container_width=True):
-                                if st.session_state.watched_list is not None:
-                                    st.session_state.watched_list.pop(a_id, None)
-                                update_db(a_id, "remove")
-                                st.session_state.action_cnt += 1
-                                st.rerun()
-                        else:
-                            u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"score_new_{a_id}_{ac}")
-                            u_count = st.number_input("시청 횟수 / 마지막 화수", min_value=1, value=1, step=1, key=f"count_new_{a_id}_{ac}")
-                            u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
-                            
-                            if st.button("저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
-                                if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                                st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
-                                update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
-                                st.session_state.action_cnt += 1
-                                st.rerun()
-                            
-                            bw1, bw2 = st.columns(2)
-                            with bw1:
-                                if st.button("보관", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
-                                    if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": 0, "status": "wish"}
-                                    update_db(a_id, "add", 0.0, u_comment, 0, status="wish")
-                                    st.session_state.action_cnt += 1
-                                    st.rerun()
-                            with bw2:
-                                if st.button("하차", key=f"btn_drop_{a_id}_{ac}", use_container_width=True):
-                                    if st.session_state.watched_list is None: st.session_state.watched_list = {}
-                                    st.session_state.watched_list[a_id] = {"rating": 0.0, "comment": u_comment, "count": u_count, "status": "dropped"}
-                                    update_db(a_id, "add", 0.0, u_comment, u_count, status="dropped")
-                                    st.session_state.action_cnt += 1
-                                    st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
             st.write("") 

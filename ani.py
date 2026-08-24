@@ -274,12 +274,20 @@ KO_GENRE_MAP = {
     "Sci-Fi": "SF", "Slice of Life": "일상", "Sports": "스포츠", "Supernatural": "초자연", "Thriller": "스릴러"
 }
 
+# 기본 플랫폼 프리셋
+DEFAULT_PLATFORMS = {
+    "AniLife": "https://anilife.app/results?search_query={query}",
+    "LinkKF": "https://linkkf.live/?s={query}",
+    "라프텔 (Laftel)": "https://laftel.net/search?keyword={query}",
+    "구글 검색": "https://www.google.com/search?q={query}+애니",
+    "나무위키": "https://namu.wiki/w/{query}"
+}
+
 # 2. Firebase 초기화 (Secrets 구조 보정)
 @st.cache_resource
 def init_firebase():
     if not firebase_admin._apps:
         try:
-            # AttrDict 및 중첩된 객체를 순수 dict/list/str로 변환하는 헬퍼 함수
             def clean_secrets(obj):
                 if hasattr(obj, "to_dict"):
                     return clean_secrets(obj.to_dict())
@@ -290,23 +298,17 @@ def init_firebase():
                 return obj
 
             if "firebase_service_account" in st.secrets:
-                # secrets에서 데이터를 가져와 순수 Python 객체로 변환
                 sec = clean_secrets(st.secrets["firebase_service_account"])
                 
                 key_dict = None
-                # Case 1: sec 자체가 JSON 문자열인 경우
                 if isinstance(sec, str):
                     key_dict = json.loads(sec, strict=False)
-                # Case 2: sec가 딕셔너리인 경우
                 elif isinstance(sec, dict):
-                    # 내부 키 "firebase_service_account"에 JSON 문자열이 있는 경우 (유저의 secrets.toml 구조)
                     inner = sec.get("firebase_service_account")
                     if isinstance(inner, str):
                         key_dict = json.loads(inner, strict=False)
-                    # 내부 키 값이 이미 딕셔너리인 경우
                     elif isinstance(inner, dict):
                         key_dict = inner
-                    # 섹션 자체가 서비스 계정 정보인 경우 (project_id 등이 직접 포함됨)
                     else:
                         key_dict = sec
                 
@@ -330,10 +332,6 @@ app_id = "k-anime-archive-v3"
 # --- DB 함수 (캐싱 및 구조 최적화) ---
 @st.cache_data(ttl=600, show_spinner=False)
 def load_user_data_from_db(user_email):
-    """
-    사용자 문서 1개만 읽어서 전체 목록과 설정을 가져옵니다. 
-    할당량 초과 에러 발생 시 안내 메시지를 표시하고 크래시를 방지합니다.
-    """
     if not db or not user_email: return {}, {}
     try:
         user_ref = db.collection("artifacts").document(app_id).collection("users").document(user_email)
@@ -366,18 +364,22 @@ def load_user_data_from_db(user_email):
         err_msg = str(e)
         if "Quota exceeded" in err_msg or "ResourceExhausted" in err_msg or "429" in err_msg:
             st.error("🚨 **데이터베이스 일일 사용 한도를 초과했습니다.**\n\nFirebase 무료 요금제의 일일 읽기 제한(50,000회)에 도달하여 데이터를 가져올 수 없습니다. **내일 오후 4~5시경**에 한도가 리셋되면 정상 이용이 가능합니다. 최적화가 완료되었으므로 리셋 후에는 다시 발생할 확률이 매우 낮습니다.")
-            return {}, {} # 빈 목록 반환하여 크래시 방지
+            return {}, {}
         raise e
 
 def sync_user_data_to_session(user_email):
     """DB에서 사용자 데이터를 가져와 세션에 동기화합니다."""
     watched, prefs = load_user_data_from_db(user_email)
     st.session_state.watched_list = watched
-    if prefs and "time_unit" in prefs:
-        st.session_state.time_unit = prefs["time_unit"]
+    if prefs:
+        if "time_unit" in prefs:
+            st.session_state.time_unit = prefs["time_unit"]
+        if "selected_platforms" in prefs:
+            st.session_state.selected_platforms = prefs["selected_platforms"]
+        if "custom_platforms" in prefs:
+            st.session_state.custom_platforms = prefs["custom_platforms"]
 
 def update_db(anime_id, action="add", rating=5.0, comment="", count=1, status="watched"):
-    """백그라운드 쓰레드에서 DB를 업데이트하여 UI 차단을 방지합니다."""
     if not db or not st.session_state.get("logged_in"): return
     user_email = st.session_state.user_info.get("email")
     user_ref = db.collection("artifacts").document(app_id).collection("users").document(user_email)
@@ -403,20 +405,16 @@ def update_db(anime_id, action="add", rating=5.0, comment="", count=1, status="w
                 })
         except Exception: pass
 
-    # 쓰레드 시작 (백그라운드 작업)
     threading.Thread(target=run_in_thread, daemon=True).start()
-    # 캐시 클리어는 즉시 수행하여 다음 로드 시 반영되도록 함
     load_user_data_from_db.clear()
 
 def batch_update_db(data_dict):
-    """대량의 데이터를 한 번에 업데이트합니다."""
     if not db or not st.session_state.get("logged_in"): return
     user_email = st.session_state.user_info.get("email")
     user_ref = db.collection("artifacts").document(app_id).collection("users").document(user_email)
     
     def run_in_thread():
         try:
-            # Firestore에 저장할 때는 키가 문자열이어야 함
             db_data = {}
             for aid, info in data_dict.items():
                 db_data[str(aid)] = {
@@ -434,7 +432,6 @@ def batch_update_db(data_dict):
     load_user_data_from_db.clear()
 
 def update_user_setting(key, value):
-    """사용자 설정을 DB에 백그라운드에서 저장합니다."""
     if not db or not st.session_state.get("logged_in"): return
     user_email = st.session_state.user_info.get("email")
     user_ref = db.collection("artifacts").document(app_id).collection("users").document(user_email)
@@ -453,14 +450,12 @@ def safe_anilist_request(query, variables, max_retries=3):
     for i in range(max_retries):
         try:
             res = requests.post(url, json={'query': query, 'variables': variables}, timeout=15)
-            # 429 Too Many Requests 처리
             if res.status_code == 429:
                 retry_after = int(res.headers.get("Retry-After", 1))
                 import time
-                time.sleep(retry_after + i) # 점진적으로 대기 시간 증가
+                time.sleep(retry_after + i)
                 continue
             
-            # 400 에러 시 상세 정보 추출 시도
             if res.status_code == 400:
                 try:
                     err_json = res.json()
@@ -483,7 +478,6 @@ def safe_anilist_request(query, variables, max_retries=3):
 # --- 유틸리티 함수 (Module Level) ---
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_metadata_from_api(missing_ids):
-    """API에서 메타데이터를 가져오는 핵심 로직 (글로벌 캐시 적용)"""
     if not missing_ids: return {}
     
     query = '''
@@ -533,24 +527,19 @@ def fetch_metadata_from_api(missing_ids):
     return results
 
 def get_watched_metadata(ids, p_bar_container=None):
-    """세션 캐시와 글로벌 캐시를 조합하여 메타데이터를 반환합니다. 진행률 표시 기능을 지원합니다."""
     if not ids: return {}
     if "metadata_storage" not in st.session_state:
         st.session_state.metadata_storage = {}
         
     clean_ids = list(set(int(x) for x in ids))
-    # 'seasonYear' 키가 없는 경우에도 누락된 것으로 간주하여 다시 불러옴 (데이터 구조 업데이트 대응)
     missing_ids = [i for i in clean_ids if i not in st.session_state.metadata_storage or 'seasonYear' not in st.session_state.metadata_storage[i]]
     
     if missing_ids:
-        # 50개씩 청크 분할
         chunks = [missing_ids[i:i+50] for i in range(0, len(missing_ids), 50)]
         total_chunks = len(chunks)
         
-        # 병렬 작업 수행 (Workers를 10개로 늘려 속도 향상)
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             future_to_chunk = {executor.submit(fetch_metadata_from_api, tuple(chunk)): chunk for chunk in chunks}
-            
             completed = 0
             for future in concurrent.futures.as_completed(future_to_chunk):
                 try:
@@ -594,16 +583,15 @@ def get_google_auth_flow():
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_info = None
-    # None으로 초기화하여 "데이터를 아직 안 불러옴"과 "목록이 비어있음"을 구분 (DB 읽기 최적화)
     st.session_state.watched_list = None
     st.session_state.auth_checked = False
-    st.session_state.logout_clicked = False # 로그아웃 플래그 추가
+    st.session_state.logout_clicked = False
 
 if 'all_media' not in st.session_state: st.session_state.all_media = []
 if 'random_media' not in st.session_state: st.session_state.random_media = None
 if 'is_random_mode' not in st.session_state: st.session_state.is_random_mode = False
 if 'page' not in st.session_state: st.session_state.page = 1
-if 'api_page' not in st.session_state: st.session_state.api_page = 1 # 실제 API에서 불러올 페이지 번호
+if 'api_page' not in st.session_state: st.session_state.api_page = 1
 if 'has_next' not in st.session_state: st.session_state.has_next = True
 if 'last_filters' not in st.session_state: st.session_state.last_filters = {}
 if 'sort_by' not in st.session_state: st.session_state.sort_by = "인기도순"
@@ -612,22 +600,21 @@ if 'action_cnt' not in st.session_state: st.session_state.action_cnt = 0
 if 'genre_filter' not in st.session_state: st.session_state.genre_filter = []
 if 'genre_to_add' not in st.session_state: st.session_state.genre_to_add = None
 if 'time_unit' not in st.session_state: st.session_state.time_unit = "시간"
+if 'selected_platforms' not in st.session_state: st.session_state.selected_platforms = ["AniLife", "LinkKF"]
+if 'custom_platforms' not in st.session_state: st.session_state.custom_platforms = {}
 
-# --- 장르 추가 대기열 처리 (위젯 생성 전 확실히 할당) ---
+# --- 장르 추가 대기열 처리 ---
 if st.session_state.genre_to_add:
     new_g = st.session_state.genre_to_add
-    current_g = list(st.session_state.genre_filter) # 복사본 생성
+    current_g = list(st.session_state.genre_filter)
     if new_g not in current_g:
         current_g.append(new_g)
-        # 리스트 자체를 새로 할당해야 위젯이 인식함
         st.session_state.genre_filter = current_g
-    st.session_state.genre_to_add = None # 대기열 비우기
+    st.session_state.genre_to_add = None
 
 # --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
-    # 1. 로그아웃 파라미터 처리 (새로고침 시 자동 로그인 방지의 핵심)
     if st.query_params.get("logout") == "true":
-        # 불필요한 구글 인증 파라미터가 섞여 있다면 정리 (주소창 미관 및 보안)
         redundant_params = ["state", "code", "scope", "authuser", "prompt", "iss"]
         changed = False
         for p in redundant_params:
@@ -638,13 +625,11 @@ def run_auth_shield():
             st.rerun()
         return False
 
-    # 2. 이미 로그인된 세션이면 통과
     if st.session_state.get('logged_in'):
         if "code" in st.query_params or "state" in st.query_params:
             st.query_params.clear()
         return True
     
-    # 3. 구글 OAuth 콜백 처리
     auth_code = st.query_params.get("code")
     auth_state = st.query_params.get("state")
     
@@ -667,7 +652,6 @@ def run_auth_shield():
                     st.session_state.user_info = user_info
                     st.session_state.logged_in = True
                     
-                    # 쿠키 저장 (컴포넌트 + JS 백업)
                     user_key = "anime_user_session"
                     expires = datetime.now() + timedelta(days=30)
                     cookie_manager.set(user_key, user_info, expires_at=expires, key="save_user_cookie")
@@ -691,34 +675,26 @@ def run_auth_shield():
             st.query_params.clear()
             st.rerun()
         
-    # 4. 쿠키 기반 세션 복구 (강화된 로직)
     user_key = "anime_user_session"
-    
-    # 쿠키 매니저가 로딩 중일 때 (None)
     if all_cookies is None:
         return False
         
-    # 쿠키 데이터 파싱
     cookie_val = all_cookies.get(user_key)
     if cookie_val:
         try:
             import base64
-            # 다양한 인코딩 방식 대응
             user_info = None
             if isinstance(cookie_val, dict):
                 user_info = cookie_val
             else:
                 try:
-                    # 1. URL 디코딩 후 JSON 시도
                     decoded = urllib.parse.unquote(cookie_val)
                     user_info = json.loads(decoded)
                 except:
                     try:
-                        # 2. Base64 시도
                         decoded = base64.b64decode(cookie_val).decode('utf-8')
                         user_info = json.loads(decoded)
                     except:
-                        # 3. 생 JSON 시도
                         user_info = json.loads(cookie_val)
             
             if user_info and isinstance(user_info, dict) and "email" in user_info:
@@ -730,10 +706,9 @@ def run_auth_shield():
         except: pass
     return False
 
-# 보호막 가동
 run_auth_shield()
 
-MAX_SAFE_PAGE = 200 # 200 * 24 = 4800 (Safer than 5000 to avoid API boundary errors)
+MAX_SAFE_PAGE = 200
 
 # 6. API 호출 (캐싱)
 @st.cache_data(ttl=3600)
@@ -742,10 +717,8 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
         return None
     
     url = 'https://graphql.anilist.co'
-    # 이미지 해상도를 extraLarge로 설정하여 고화질 제공 (고해상도 디스플레이 최적화)
     media_fields = "id title { native romaji } coverImage { extraLarge large } averageScore popularity siteUrl season seasonYear trailer { id site } startDate { year month day } format genres"
     
-    # AniList expects sort to be an array [MediaSort]
     if isinstance(sort, str):
         sort = [sort]
         
@@ -784,7 +757,6 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
                 return None
             return data
         else:
-            # 병렬 요청으로 속도 개선 (정상/성인물 동시 조회)
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future_normal = executor.submit(make_request, False)
                 future_adult = executor.submit(make_request, True)
@@ -801,7 +773,6 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
             
             combined_media = d_normal.get('media', []) + d_adult.get('media', [])
             
-            # 파이썬 재정렬
             if "POPULARITY_DESC" in sort:
                 combined_media.sort(key=lambda x: x.get('popularity', 0), reverse=True)
             elif "SCORE_DESC" in sort:
@@ -827,23 +798,17 @@ def fetch_anime(page, sort, year=None, season=None, genres=None, ex_genres=None,
         return None
 
 def fetch_random_anime(year=None, season=None, genres=None, ex_genres=None, search=None, ids=None, exclude_ids=None, include_adult=False):
-    """필터에 맞는 작품 중 무작위로 한 페이지를 가져옵니다. (자동 재시도 로직 포함)"""
     current_sort = "POPULARITY_DESC"
     
     for attempt in range(10):
-        # 1. 먼저 전체 페이지 수를 확인하기 위해 1개만 요청 (에러 발생 시 조용히 넘어가기 위해 show_error=False)
         first_page = fetch_anime(1, current_sort, year, season, genres, ex_genres, search, ids, exclude_ids, include_adult, per_page=1, show_error=False)
         if not first_page or not first_page.get('media'):
             continue
         
         last_page = first_page['pageInfo']['lastPage']
-        # 24개씩 가져올 때 4800위까지의 안전한 페이지 수 계산
         max_safe_page = min(last_page, 4800 // 24)
-        
-        # 2. 랜덤 페이지 선택
         random_p = random.randint(1, max_safe_page)
         
-        # 3. 해당 페이지 데이터 가져오기
         result = fetch_anime(random_p, current_sort, year, season, genres, ex_genres, search, ids, exclude_ids, include_adult, show_error=False)
         if result and result.get('media'):
             random.shuffle(result['media'])
@@ -863,28 +828,23 @@ with st.sidebar:
                 st.session_state.code_verifier = flow.code_verifier
                 oauth_storage[state] = flow.code_verifier
             
-            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_blank" class="google-login-btn">구글 로그인</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{st.session_state.google_auth_url}" target="_self" class="google-login-btn">구글 로그인</a>', unsafe_allow_html=True)
     else:
         st.success(f"**{st.session_state.user_info.get('name')}**님")
         
-        
-        # --- 시청 통계 섹션 (최적화: 변경 시에만 재계산) ---
+        # --- 시청 통계 섹션 ---
         current_watched = st.session_state.watched_list or {}
         watched_count = len(current_watched)
         
-        # 캐시 초기화 확인
         if "stats_cache" not in st.session_state:
             st.session_state.stats_cache = {"hash": None, "data": None}
             
-        # 현재 시청 목록의 상태를 나타내는 해시 생성 (ID, 평점, 시청 횟수 포함하여 변경 시 통계 재계산)
-        # v3: 분기별 통계 데이터 구조 변경 (int -> list) 대응
         current_hash = hash(("v3", frozenset((k, v.get('rating', 0), v.get('count', 1)) for k, v in current_watched.items())))
         
         if st.session_state.stats_cache["hash"] != current_hash:
             if watched_count > 0:
                 stats_pbar = st.empty()
                 with st.spinner("통계 분석 중..."):
-                    # 실제 '시청 완료'한 작품만 통계에 반영
                     actually_watched = {k: v for k, v in current_watched.items() if v.get('status', 'watched') == 'watched'}
                     watched_count_stats = len(actually_watched)
                     
@@ -892,12 +852,11 @@ with st.sidebar:
                         avg_score = sum(v.get('rating', 0) for v in actually_watched.values()) / watched_count_stats
                         watched_ids = [int(aid) for aid in actually_watched.keys()]
                         meta_map = get_watched_metadata(watched_ids, p_bar_container=stats_pbar)
-                        stats_pbar.empty() # 작업 완료 후 표시줄 제거
+                        stats_pbar.empty()
                         
                         total_minutes = 0
                         genre_stats = {} 
                         
-                        # 시리즈 그룹화 (DSU)
                         parent = {aid: aid for aid in watched_ids}
                         def find(i):
                             if parent[i] == i: return i
@@ -929,7 +888,7 @@ with st.sidebar:
                         series_count = len(set(find(aid) for aid in watched_ids))
 
                         total_episodes = 0
-                        quarterly_stats = {} # {(year, season): [rating_sum, count]}
+                        quarterly_stats = {}
                         for aid, info in actually_watched.items():
                             meta = meta_map.get(aid)
                             rating = info.get('rating', 0)
@@ -939,7 +898,6 @@ with st.sidebar:
                                 total_episodes += eps * count
                                 total_minutes += eps * (meta.get('duration') or 0) * count
                                 
-                                # 분기별 통계 수집
                                 y = meta.get('seasonYear')
                                 s = meta.get('season')
                                 if y:
@@ -957,7 +915,6 @@ with st.sidebar:
                         
                         sorted_genres = sorted(genre_stats.items(), key=lambda x: x[1][1], reverse=True)
                         
-                        # 결과 캐싱
                         st.session_state.stats_cache = {
                             "hash": current_hash,
                             "data": {
@@ -971,7 +928,6 @@ with st.sidebar:
                             }
                         }
                     else:
-                        # 시청 완료 작품이 없을 때
                         st.session_state.stats_cache = {
                             "hash": current_hash,
                             "data": {
@@ -979,7 +935,6 @@ with st.sidebar:
                             }
                         }
             else:
-                # 데이터가 아예 없을 때
                 st.session_state.stats_cache = {
                     "hash": current_hash,
                     "data": {
@@ -987,7 +942,6 @@ with st.sidebar:
                     }
                 }
 
-        # 캐시된 데이터 사용
         stats = st.session_state.stats_cache["data"] or {
             "avg_score": 0, "series_count": 0, "total_episodes": 0, "total_minutes": 0, "sorted_genres": [], "watched_count_stats": 0, "quarterly_stats": {}
         }
@@ -999,28 +953,61 @@ with st.sidebar:
         watched_count_display = stats.get("watched_count_stats", 0)
         quarterly_stats = stats.get("quarterly_stats", {})
 
-        # 1. 시청 시간 단위 설정 (팝오버로 분리하여 레이아웃 깨짐 방지)
+        # 1. 설정 팝오버 (시간 단위 + 플랫폼 커스텀)
         st.write("<div style='height: 10px;'></div>", unsafe_allow_html=True)
         col_title, col_opt = st.columns([3, 1])
         with col_title:
             st.markdown('<div style="font-size: 0.9rem; font-weight: bold; margin-top: 5px;">📊 나의 아카이브 현황</div>', unsafe_allow_html=True)
         with col_opt:
-            with st.popover("⚙️", help="시청 시간 단위 변경"):
+            with st.popover("⚙️", help="설정"):
+                st.markdown("**⏱️ 시청 시간 단위**")
                 t_unit = st.selectbox("시간 단위", ["일", "시간", "분", "초"], 
-                                    index=["일", "시간", "분", "초"].index(st.session_state.time_unit), 
-                                    key="time_unit_selector")
+                                      index=["일", "시간", "분", "초"].index(st.session_state.time_unit), 
+                                      key="time_unit_selector",
+                                      label_visibility="collapsed")
                 if t_unit != st.session_state.time_unit:
                     st.session_state.time_unit = t_unit
                     update_user_setting("time_unit", t_unit)
+
+                st.divider()
+
+                st.markdown("**📺 시청 플랫폼 설정**")
+                all_plat_map = dict(DEFAULT_PLATFORMS, **st.session_state.custom_platforms)
+                chosen_plats = st.multiselect(
+                    "표시할 플랫폼 선택",
+                    options=list(all_plat_map.keys()),
+                    default=[p for p in st.session_state.selected_platforms if p in all_plat_map],
+                    key="platform_multiselect"
+                )
+                if chosen_plats != st.session_state.selected_platforms:
+                    st.session_state.selected_platforms = chosen_plats
+                    update_user_setting("selected_platforms", chosen_plats)
+                    st.rerun()
+
+                with st.expander("➕ 새 플랫폼 직접 추가"):
+                    c_name = st.text_input("플랫폼 이름", placeholder="예: 넷플릭스", key="new_plat_name")
+                    c_url = st.text_input("검색 URL ({query} 포함)", placeholder="https://example.com/search?q={query}", key="new_plat_url")
+                    
+                    if st.button("플랫폼 추가", use_container_width=True):
+                        if c_name and c_url and "{query}" in c_url:
+                            st.session_state.custom_platforms[c_name] = c_url
+                            if c_name not in st.session_state.selected_platforms:
+                                st.session_state.selected_platforms.append(c_name)
+                            update_user_setting("custom_platforms", st.session_state.custom_platforms)
+                            update_user_setting("selected_platforms", st.session_state.selected_platforms)
+                            st.toast(f"✅ '{c_name}' 플랫폼이 추가되었습니다.")
+                            st.rerun()
+                        else:
+                            st.error("이름과 `{query}`가 포함된 URL을 입력해주세요.")
 
         # 2. 시간 포맷팅 계산
         if st.session_state.time_unit == "일": total_time_str = f"{total_minutes / 1440:.1f}일"
         elif st.session_state.time_unit == "시간": total_time_str = f"{total_minutes / 60:.1f}시간"
         elif st.session_state.time_unit == "분": total_time_str = f"{total_minutes:,}분"
         elif st.session_state.time_unit == "초": total_time_str = f"{total_minutes * 60:,}초"
-        else: total_time_str = f"{total_minutes / 60:.1f}시간" # Fallback to hours
+        else: total_time_str = f"{total_minutes / 60:.1f}시간"
 
-        # 3. 통합 통계 카드 (단일 마크다운으로 구성하여 절대 깨지지 않음)
+        # 3. 통합 통계 카드
         st.markdown(f"""
         <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(76, 175, 80, 0.2); margin-bottom: 15px;">
             <!-- 상단 3칸 -->
@@ -1074,23 +1061,15 @@ with st.sidebar:
 
         with st.expander("📅 분기별 시청 통계"):
             if quarterly_stats:
-                # 연도별 내림차순 정렬
                 years_sorted = sorted(set(y for y, s in quarterly_stats.keys()), reverse=True)
                 for y in years_sorted:
-                    # 해당 연도의 총 작품 수 계산 (리스트 형태와 단일 숫자 형태 모두 대응)
                     year_total = sum((d[1] if isinstance(d, (list, tuple)) else d) for (yr, s), d in quarterly_stats.items() if yr == y)
-                    
-                    # 연도별로 또 다른 expander (계층 구조)
                     with st.expander(f"{y}년 ({year_total}작품)"):
-                        # 분기 순서대로 표시
                         for s_val, s_lab in [("WINTER", "1분기"), ("SPRING", "2분기"), ("SUMMER", "3분기"), ("FALL", "4분기")]:
                             q_data = quarterly_stats.get((y, s_val))
-                            # q_data가 리스트/튜플 형태인 경우에만 처리 (캐시 불일치 방어)
                             if q_data and isinstance(q_data, (list, tuple)):
                                 r_sum, count = q_data
                                 q_avg = r_sum / count
-                                
-                                # 분기 클릭 시 필터 적용 및 통계 표시 (커스텀 HTML 레이아웃으로 오버플로우 방지)
                                 st.markdown(f"""
                                 <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 4px; border-bottom: 1px solid #eee;">
                                     <div style="flex: 0 0 auto;">
@@ -1103,7 +1082,6 @@ with st.sidebar:
                                 </div>
                                 """, unsafe_allow_html=True)
                                 
-                                # 버튼 기능을 유지하기 위한 투명 버튼 (URL 파라미터 방식 대신 세션 방식 유지 선호 시)
                                 if st.button(f"선택: {s_lab}", key=f"q_filter_btn_{y}_{s_val}", use_container_width=True):
                                     st.session_state.year_filter = y
                                     st.session_state.season_filter = s_lab
@@ -1115,9 +1093,7 @@ with st.sidebar:
 
         # --- 데이터 내보내기/가져오기 섹션 ---
         with st.expander("💾 데이터 내보내기/가져오기"):
-            # 1. 내보내기 (Export)
             if watched_count > 0:
-                # JSON 직렬화 가능한 형태로 변환 (제목 포함)
                 if st.button("📦 내보낼 데이터 준비하기", use_container_width=True):
                     with st.spinner("작품 정보를 불러오는 중..."):
                         watched_ids = list(current_watched.keys())
@@ -1146,13 +1122,11 @@ with st.sidebar:
             
             st.divider()
             
-            # 2. 가져오기 (Import)
             uploaded_file = st.file_uploader("JSON 파일 가져오기", type=["json"], help="기존에 내보낸 JSON 파일을 업로드하세요.")
             if uploaded_file:
                 try:
                     import_data = json.load(uploaded_file)
                     if st.button("🚀 데이터 병합 및 업로드", use_container_width=True, type="primary"):
-                        # 유효성 검사 및 정규화
                         valid_data = {}
                         for k, v in import_data.items():
                             try:
@@ -1165,16 +1139,11 @@ with st.sidebar:
                             except: continue
                         
                         if valid_data:
-                            # 현재 세션 상태와 병합
                             if st.session_state.watched_list is None:
                                 st.session_state.watched_list = {}
                             
-                            # 병합 (가져온 데이터가 우선)
                             st.session_state.watched_list.update(valid_data)
-                            
-                            # Firebase에 업데이트 (병합된 전체 목록 전송)
                             batch_update_db(st.session_state.watched_list)
-                            
                             st.success(f"✅ {len(valid_data)}개의 데이터를 성공적으로 가져왔습니다!")
                             st.rerun()
                         else:
@@ -1196,10 +1165,7 @@ with st.sidebar:
                         st.error(f"동기화 오류: {str(e)}")
         with sc2:
             if st.button("로그아웃", use_container_width=True):
-                # 1. URL 파라미터에 logout=true 설정 (새로고침 대비)
                 st.query_params["logout"] = "true"
-                
-                # 2. 쿠키 삭제 (새로운 이름 적용 및 안전한 삭제)
                 cookie_name = "anime_user_session"
                 try:
                     cookie_manager.delete(cookie_name)
@@ -1212,7 +1178,6 @@ with st.sidebar:
                     </script>
                 """, height=0)
 
-                # 3. 세션 상태 초기화
                 st.session_state.logged_in = False
                 st.session_state.user_info = None
                 st.session_state.watched_list = {}
@@ -1224,13 +1189,10 @@ with st.sidebar:
     st.divider()
     st.header("🔍 검색 및 필터")
 
-    # --- 필터 초기화 로직 (Callback 함수) ---
     def reset_all_filters():
-        # 1. URL 파라미터 중 검색어만 제거 (adult는 유지)
         if "q" in st.query_params:
             del st.query_params["q"]
         
-        # 2. 위젯 키 값 초기화 (성인물 필터는 제외)
         st.session_state.search_input = ""
         st.session_state.prev_q = ""
         st.session_state.year_filter = "전체"
@@ -1243,15 +1205,12 @@ with st.sidebar:
         if "rating_filter" in st.session_state:
             st.session_state.rating_filter = 0.0
         
-        # 3. 데이터 및 페이지 초기화
         st.session_state.all_media = []
         st.session_state.page = 1
         st.session_state.api_page = 1
 
-    # 제목 검색 (즉시 반영)
     search_q = st.query_params.get("q", "")
     
-    # 1. '이름으로 검색' 버튼 등으로 URL이 외부에서 바뀌었을 때만 위젯 상태 동기화
     if "prev_q" not in st.session_state:
         st.session_state.prev_q = search_q
         
@@ -1259,10 +1218,8 @@ with st.sidebar:
         st.session_state.search_input = search_q
         st.session_state.prev_q = search_q
         
-    # 2. 위젯 생성
     new_search = st.text_input("제목 검색", placeholder="영문 또는 일문 제목", key="search_input")
 
-    # 모바일 키보드 제어 JS (검색창은 키보드 활성화, 필터류는 비활성화)
     st.components.v1.html("""
         <script>
             function setupInputs() {
@@ -1270,7 +1227,6 @@ with st.sidebar:
                 const inputs = doc.querySelectorAll('input');
                 
                 inputs.forEach(input => {
-                    // 1. 제목 검색창: 키보드 '검색' 버튼 설정
                     if (input.placeholder === "영문 또는 일문 제목") {
                         input.type = "search";
                         input.setAttribute("enterkeyhint", "search");
@@ -1280,14 +1236,11 @@ with st.sidebar:
                         return;
                     }
                     
-                    // 2. 필터류: 키보드 팝업 및 커서 방지
                     const container = input.closest('div[data-testid="stSelectbox"], div[data-testid="stMultiSelect"]');
                     if (container) {
                         const label = container.querySelector('label');
                         const labelText = label ? label.textContent.trim() : "";
-                        
-                        // "정렬 방식"은 label_visibility="collapsed"여도 label 태그가 존재함
-                        const targetLabels = ["년도", "분기", "포함 장르", "제외 장르", "시청 여부", "시간 단위", "정렬 방식"];
+                        const targetLabels = ["년도", "분기", "포함 장르", "제외 장르", "시청 여부", "시간 단위", "정렬 방식", "표시할 플랫폼 선택"];
                         
                         if (targetLabels.includes(labelText)) {
                             input.setAttribute('inputmode', 'none');
@@ -1298,10 +1251,8 @@ with st.sidebar:
                 });
             }
 
-            // 초기 실행
             setupInputs();
 
-            // MutationObserver를 사용하여 팝오버 등 동적 요소 대응
             const observer = new MutationObserver((mutations) => {
                 setupInputs();
             });
@@ -1315,7 +1266,7 @@ with st.sidebar:
 
     if new_search != search_q:
         st.query_params["q"] = new_search
-        st.session_state.prev_q = new_search # 변경된 값을 즉시 반영하여 역동기화 방지
+        st.session_state.prev_q = new_search
         st.session_state.page = 1
         st.rerun()
 
@@ -1331,7 +1282,6 @@ with st.sidebar:
     s_season_label = st.selectbox("분기", season_labels, key="season_filter")
     s_season = season_map[s_season_label]
     
-    # 장르 선택
     genre_map = {
         "액션": "Action", "모험": "Adventure", "코미디": "Comedy", "드라마": "Drama", "에치": "Ecchi",
         "판타지": "Fantasy", "공포": "Horror", "마법소녀": "Mahou Shoujo", "메카": "Mecha", 
@@ -1341,28 +1291,23 @@ with st.sidebar:
     selected_genres = st.multiselect("포함 장르", list(genre_map.keys()), key="genre_filter")
     s_genres = [genre_map[g] for g in selected_genres] if selected_genres else None
 
-    # 제외 장르 추가 (-)
     excluded_genres = st.multiselect("제외 장르", list(genre_map.keys()), key="ex_genre_filter")
     s_ex_genres = [genre_map[g] for g in excluded_genres] if excluded_genres else None
     
-    # 시청 여부 필터 (Mutual Exclusive)
     watch_options = ["전체", "본 작품만", "볼 작품만", "안 본 작품만"]
     s_watch = st.selectbox("시청 여부", watch_options, key="watch_filter") if st.session_state.logged_in else "전체"
     only_w = (s_watch == "본 작품만")
     only_wish = (s_watch == "볼 작품만")
     only_not_w = (s_watch == "안 본 작품만")
 
-    # --- 필터 초기화 버튼 (시청 여부 아래 배치) ---
     if st.button("🔄 전체 필터 초기화", use_container_width=True, on_click=reset_all_filters):
         st.rerun()
 
-    # 성인물 설정 (쿼리 파라미터 연동으로 새로고침 유지)
     adult_param = st.query_params.get("adult", "false") == "true"
     s_adult = st.checkbox("성인물 포함", value=adult_param, key="adult_filter")
 
     if s_adult != adult_param:
         st.query_params["adult"] = "true" if s_adult else "false"
-        # 정렬 상태가 있다면 유지
         if "sort_by" in st.session_state:
             st.query_params["sort"] = st.session_state.sort_by
         st.session_state.page = 1
@@ -1373,7 +1318,6 @@ with st.sidebar:
     st.divider()
     if st.button("🎲 랜덤 추천 받기", use_container_width=True, type="primary"):
         with st.spinner("랜덤 작품 찾는 중..."):
-            # 필터링 조건 정리
             target_ids = None
             exclude_ids = None
             current_watched = st.session_state.watched_list or {}
@@ -1411,7 +1355,7 @@ with st.sidebar:
     if st.session_state.is_random_mode:
         if st.button("🔙 일반 목록으로", use_container_width=True):
             st.session_state.is_random_mode = False
-            st.session_state.all_media = [] # 목록 초기화하여 1페이지부터 다시 로드
+            st.session_state.all_media = []
             st.rerun()
 
 # 정렬 옵션 설정
@@ -1420,11 +1364,9 @@ if st.session_state.logged_in and only_w:
     sort_map["내 평점순"] = "MY_SCORE_DESC"
     sort_map["시청 순서순"] = "WATCH_AT_DESC"
 else:
-    # "내 평점순"이나 "시청 순서순"이 선택된 상태에서 필터가 바뀌어 더 이상 유효하지 않은 경우 정렬 초기화
     if st.session_state.sort_by in ["내 평점순", "시청 순서순"]:
         st.session_state.sort_by = "인기도순"
 
-# 필터 상태 감지 (변경 시 목록 초기화)
 current_filters = {
     "q": new_search, "y": s_year, "s": s_season, 
     "g": str(s_genres), "eg": str(s_ex_genres),
@@ -1441,33 +1383,27 @@ if st.session_state.last_filters != current_filters:
     st.session_state.is_random_mode = False
     st.session_state.random_media = None
 
-# 데이터 로드 (필요할 때만)
+# 데이터 로드
 if st.session_state.has_next and (not st.session_state.all_media or len(st.session_state.all_media) < st.session_state.page * 24):
     target_ids = None
     exclude_ids = None
     
-    # 1. 시청한 작품 필터링용 ID 목록 생성
     current_watched = st.session_state.watched_list or {}
     if only_w:
-        # '시청 완료'한 작품만 필터링
         target_ids = [aid for aid, info in current_watched.items() if info.get('status', 'watched') == 'watched' and info.get('rating', 0) >= s_rating]
         
-        # 정렬에 따른 ID 목록 사전 정렬
         if st.session_state.sort_by == "내 평점순":
             target_ids.sort(key=lambda aid: (
                 current_watched[aid].get('rating', 0), 
                 current_watched[aid].get('count', 1)
             ), reverse=True)
         elif st.session_state.sort_by == "시청 순서순":
-            # 'at' 필드가 없는 경우나 타입 불일치를 방지하기 위한 안전한 정렬 키
             def get_sort_key(aid):
                 val = current_watched[aid].get('at')
                 if val is None: return datetime.min
-                # 문자열로 저장된 경우 처리
                 if isinstance(val, str):
                     try: return datetime.fromisoformat(val.replace('Z', '+00:00'))
                     except: return datetime.min
-                # aware/naive 비교 에러 방지 (Firestore는 주로 aware)
                 if hasattr(val, 'tzinfo') and val.tzinfo is not None:
                     return val.replace(tzinfo=None)
                 return val
@@ -1476,35 +1412,26 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
         if not target_ids: target_ids = [0]
 
     elif only_wish:
-        # '보관중'인 작품만 필터링
         target_ids = [aid for aid, info in current_watched.items() if info.get('status') == 'wish']
-        
-        # 보관중인 작품은 등록 순서(at)로 정렬
         target_ids.sort(key=lambda aid: current_watched[aid].get('at') or datetime.min, reverse=True)
-        
         if not target_ids: target_ids = [0]
     
     if only_not_w:
         exclude_ids = list(current_watched.keys())
         if exclude_ids:
-            exclude_ids = exclude_ids[:500] # API 제한 준수
+            exclude_ids = exclude_ids[:500]
 
-    # API용 정렬 값 결정
     api_sort = sort_map.get(st.session_state.sort_by, "POPULARITY_DESC")
-    
-    # "내 평점순" 또는 "시청 순서순" 정렬 로직 (전체 데이터를 정렬 후 페이징)
     is_custom_sort = (st.session_state.sort_by in ["내 평점순", "시청 순서순"] and only_w)
     has_active_filters = any([new_search, s_year, s_season, s_genres, s_ex_genres, s_rating > 0])
     
     if is_custom_sort:
         if has_active_filters:
-            # 필터가 있는 경우: API 필터로 모든 작품을 가져온 뒤 시청 기록만 남김 (누락 방지 핵심 로직)
             if not st.session_state.all_media:
                 all_fetched = []
                 temp_api_page = 1
                 with st.spinner("조건에 맞는 시청 기록 찾는 중..."):
                     while True:
-                        # id_in을 쓰지 않고 필터로만 검색
                         data = fetch_anime(
                             temp_api_page, "POPULARITY_DESC", 
                             s_year, s_season, s_genres, s_ex_genres,
@@ -1513,14 +1440,12 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                         )
                         if not data or not data['media']: break
                         
-                        # 가져온 데이터 중 내가 본 것만 필터링
                         watched_only = [m for m in data['media'] if m['id'] in current_watched and current_watched[m['id']].get('status', 'watched') == 'watched' and current_watched[m['id']].get('rating', 0) >= s_rating]
                         all_fetched.extend(watched_only)
                         
                         if not data['pageInfo']['hasNextPage'] or len(all_fetched) >= 500: break
                         temp_api_page += 1
                 
-                # 최종 정렬
                 if st.session_state.sort_by == "내 평점순":
                     all_fetched.sort(key=lambda x: (
                         current_watched.get(x['id'], {}).get('rating', 0),
@@ -1533,12 +1458,10 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                 st.session_state.has_next = False
                 st.session_state.total_pages = 1
         else:
-            # 필터가 없는 경우: 기존의 ID 기반 페이징 (ID 개수가 많을 수 있으므로 안전하게 처리)
             per_page = 24
             start_idx = (st.session_state.page - 1) * per_page
             end_idx = start_idx + per_page
             
-            # AniList 500개 제한 대응: 현재 페이지에 필요한 24개만 요청하므로 안전함
             paged_ids = target_ids[start_idx:end_idx]
             
             if paged_ids:
@@ -1557,15 +1480,12 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                     st.session_state.has_next = end_idx < len(target_ids)
                     st.session_state.total_pages = (len(target_ids) + per_page - 1) // per_page
     else:
-        # 일반적인 API 페이징 처리
         if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"
         
         attempts = 0
         while st.session_state.has_next and len(st.session_state.all_media) < st.session_state.page * 24 and attempts < 5:
             attempts += 1
             fetch_size = 50 if (only_w or only_not_w) else 24
-            
-            # 필터가 있는 "본 작품만"은 id_in을 쓰지 않고 필터로 검색 후 클라이언트에서 거름
             api_ids = None if (only_w and has_active_filters) else target_ids
             
             data = fetch_anime(
@@ -1581,8 +1501,6 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
 
             if data:
                 new_items = data['media']
-                
-                # 시청 여부 로컬 필터링
                 if only_w and has_active_filters:
                     new_items = [m for m in new_items if m['id'] in current_watched and current_watched[m['id']].get('status', 'watched') == 'watched' and current_watched[m['id']].get('rating', 0) >= s_rating]
                 elif only_not_w:
@@ -1601,61 +1519,6 @@ if st.session_state.has_next and (not st.session_state.all_media or len(st.sessi
                 if added_count == 0 and st.session_state.has_next: continue
                 else: break
             else: break
-        # 일반적인 API 페이징 처리 (루프를 통해 부족한 수량 채움)
-        if api_sort == "MY_SCORE_DESC": api_sort = "POPULARITY_DESC"
-        
-        # 목표 수량이 채워질 때까지 최대 5번 시도 (무한 루프 방지)
-        attempts = 0
-        while st.session_state.has_next and len(st.session_state.all_media) < st.session_state.page * 24 and attempts < 5:
-            attempts += 1
-            # 안 본 작품만 필터링 시에는 한 번에 50개씩 가져와서 효율성 증대
-            fetch_size = 50 if only_not_w else 24
-            
-            data = fetch_anime(
-                st.session_state.api_page, 
-                api_sort, 
-                s_year, s_season, s_genres, s_ex_genres,
-                new_search if new_search else None,
-                ids=target_ids,
-                exclude_ids=exclude_ids,
-                include_adult=s_adult,
-                per_page=fetch_size
-            )
-
-            if data:
-                new_items = data['media']
-                
-                # "안 본 작품만" 필터링 시 클라이언트 사이드에서 한 번 더 검증 (500개 제한 대비)
-                current_watched = st.session_state.watched_list or {}
-                if only_not_w:
-                    new_items = [m for m in new_items if m['id'] not in current_watched]
-                
-                # "내 평점순"인 경우 가져온 결과 내에서 다시 한 번 정렬 (평점 -> 시청 횟수 순)
-                if st.session_state.sort_by == "내 평점순":
-                    new_items.sort(key=lambda x: (
-                        current_watched.get(x['id'], {}).get('rating', 0),
-                        current_watched.get(x['id'], {}).get('count', 1)
-                    ), reverse=True)
-                
-                # 중복 제거 및 추가
-                existing_ids = {m['id'] for m in st.session_state.all_media}
-                added_count = 0
-                for item in new_items:
-                    if item['id'] not in existing_ids:
-                        st.session_state.all_media.append(item)
-                        added_count += 1
-                
-                st.session_state.has_next = data['pageInfo']['hasNextPage']
-                st.session_state.total_pages = data['pageInfo']['lastPage']
-                st.session_state.api_page += 1
-                
-                # 만약 이번 페이지에서 아무것도 추가되지 않았는데 다음 페이지가 있다면 즉시 다음 시도
-                if added_count == 0 and st.session_state.has_next:
-                    continue
-                else:
-                    break
-            else:
-                break
 
 # --- 추천 정보 가져오기 (캐싱 적용) ---
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -1686,13 +1549,6 @@ def fetch_recommendations(anime_id):
 anime_list = st.session_state.all_media
 total_loaded = len(anime_list)
 
-# 정렬 방식 변경 콜백
-def on_sort_change():
-    st.session_state.all_media = []
-    st.session_state.page = 1
-    st.session_state.api_page = 1
-
-# 상단 헤더 및 정렬 UI
 h_col1, h_col2 = st.columns([4, 1])
 with h_col1:
     if st.session_state.is_random_mode:
@@ -1708,7 +1564,6 @@ with h_col1:
 with h_col2:
     st.write("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     if not st.session_state.is_random_mode:
-        # sort_map에 현재 세션의 정렬 방식이 포함되어 있는지 확인
         available_sorts = list(sort_map.keys())
         current_sort = st.session_state.sort_by
         if current_sort not in available_sorts:
@@ -1726,7 +1581,6 @@ st.divider()
 if not anime_list: 
     st.info("데이터가 없습니다.")
 else:
-    # 4개씩 묶어서 행(row) 단위로 렌더링 (모바일 정렬 순서 문제 해결)
     for i in range(0, len(anime_list), 4):
         cols = st.columns(4)
         chunk = anime_list[i:i+4]
@@ -1734,7 +1588,6 @@ else:
             a_id = anime['id']
             current_watched = st.session_state.watched_list or {}
             with cols[j]:
-                # --- 2차 최적화: 모든 정보를 하나의 HTML 블록으로 통합 렌더링 ---
                 is_w = a_id in current_watched
                 w_data = current_watched.get(a_id, {}) if is_w else {}
                 status = w_data.get("status", "watched")
@@ -1773,14 +1626,14 @@ else:
                 else:
                     score_html = "<div class='score-box' style='color:#bbb;'>☆☆☆☆☆ 0.0</div>"
 
-                # 4. 코멘트 영역
+                # 4. 코멘트 영역 (줄바꿈 허용, 기울임/따옴표 제거)
                 user_comment = w_data.get("comment", "")
                 if is_w and user_comment:
                     comment_html = f'<div class="user-comment-box">{user_comment}</div>'
                 else:
                     comment_html = '<div class="empty-comment-box"></div>'
 
-                # 5. 통합 렌더링 (안전하게 이미지 경로 획득하여 KeyError 방지)
+                # 5. 통합 렌더링
                 cover_img = anime.get('coverImage', {}).get('extraLarge') or anime.get('coverImage', {}).get('large')
                 st.image(cover_img, use_container_width=True)
                 st.markdown(f"""
@@ -1795,50 +1648,48 @@ else:
                 """, unsafe_allow_html=True)
 
                 c1, c2, c3 = st.columns(3, gap="small")
-
                 
                 # 상세 팝오버
                 with c1.popover("상세", use_container_width=True, key=f"pop_detail_{a_id}"):
-                    # 장르 표시 추가
                     genres = [g for g in anime.get('genres', []) if g != "Hentai"]
                     if genres:
-                        # 3열로 버튼 배치 (간격 축소)
                         g_cols = st.columns(3, gap="small")
                         for idx, g in enumerate(genres):
                             ko_g = KO_GENRE_MAP.get(g, g)
                             with g_cols[idx % 3]:
                                 if st.button(ko_g, key=f"g_btn_{a_id}_{g}", use_container_width=True):
-                                    # 직접 수정 대신 대기열에 추가 후 리런
                                     if ko_g not in st.session_state.genre_filter:
                                         st.session_state.genre_to_add = ko_g
                                         st.rerun()
-                        st.write("") # 간격 조절
+                        st.write("")
 
                     st.link_button("AniList에서 보기", anime['siteUrl'], use_container_width=True)
                     
                     if st.button("🔍 이름으로 검색", key=f"btn_search_{a_id}", use_container_width=True, type="primary"):
                         title = anime['title']['native'] or anime['title']['romaji']
-                        # URL 파라미터만 갱신 (위젯 상태는 다음 런의 최상단 동기화 로직에서 처리)
                         st.query_params["q"] = title
-                        # 목록 초기화 및 페이지 리셋
                         st.session_state.all_media = []
                         st.session_state.page = 1
                         st.rerun()
                 
-                # 검색 팝오버 (🔍) - AniLife / LinkKF 선택
+                # 동적 플랫폼 검색 팝오버 (🔍)
                 with c2.popover("🔍", use_container_width=True, key=f"search_pop_{a_id}"):
                     st.markdown("**📺 시청 플랫폼 선택**")
                     search_title = anime['title']['native'] or anime['title']['romaji']
                     encoded_title = urllib.parse.quote(search_title)
                     
-                    anilife_url = f"https://anilife.app/results?search_query={encoded_title}"
-                    linkkf_url = f"https://linkkf.live/?s={encoded_title}"
+                    all_plat_map = dict(DEFAULT_PLATFORMS, **st.session_state.custom_platforms)
+                    active_plats = [p for p in st.session_state.selected_platforms if p in all_plat_map]
                     
-                    st.link_button("🌐 AniLife에서 검색", anilife_url, use_container_width=True)
-                    st.link_button("🔗 LinkKF에서 검색", linkkf_url, use_container_width=True)
+                    if active_plats:
+                        for p_name in active_plats:
+                            target_template = all_plat_map[p_name]
+                            target_url = target_template.format(query=encoded_title)
+                            st.link_button(f"🌐 {p_name} 검색", target_url, use_container_width=True)
+                    else:
+                        st.caption("선택된 플랫폼이 없습니다. 상단 설정(⚙️)에서 플랫폼을 추가하세요.")
 
                 if st.session_state.logged_in:
-                    # action_cnt를 모든 위젯 키에 반영하여 동작 후 확실하게 창이 닫히고 초기화되도록 함
                     ac = st.session_state.action_cnt
                     pop_label = "수정" if is_w and status == "watched" else ("보관" if is_w and status == "wish" else ("하차" if is_w and status == "dropped" else "시청"))
                     
@@ -1850,17 +1701,14 @@ else:
                             u_comment = st.text_area("코멘트", value=w_data.get("comment", ""), placeholder="짧은 감상평을 남겨주세요", key=f"comm_edit_{a_id}_{ac}")
                             
                             if st.button("업데이트", key=f"btn_update_{a_id}_{ac}", use_container_width=True, type="primary"):
-                                # 낙관적 업데이트: UI에 즉시 반영
                                 if st.session_state.watched_list is None: st.session_state.watched_list = {}
                                 st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
-                                # 백그라운드 저장 시동
                                 update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                                 
                             st.divider()
                             if st.button("시청 기록 삭제", key=f"btn_delete_{a_id}_{ac}", use_container_width=True):
-                                # 낙관적 삭제
                                 if st.session_state.watched_list is not None:
                                     st.session_state.watched_list.pop(a_id, None)
                                 update_db(a_id, "remove")
@@ -1878,7 +1726,6 @@ else:
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                             
-                            # 상태 전환 및 코멘트 업데이트 버튼 가로 배치
                             bu1, bu2 = st.columns(2)
                             with bu1:
                                 if status == "wish":
@@ -1895,7 +1742,6 @@ else:
                                         st.rerun()
                             
                             with bu2:
-                                # 보관/하차 상태에서도 코멘트 업데이트를 위한 버튼 추가
                                 if st.button("코멘트 업데이트", key=f"btn_comm_update_{a_id}_{ac}", use_container_width=True):
                                     st.session_state.watched_list[a_id]["comment"] = u_comment
                                     update_db(a_id, "add", 0.0, u_comment, w_data.get("count", 0), status=status)
@@ -1916,14 +1762,12 @@ else:
                             u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
                             
                             if st.button("저장", key=f"btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
-                                # 낙관적 저장
                                 if st.session_state.watched_list is None: st.session_state.watched_list = {}
                                 st.session_state.watched_list[a_id] = {"rating": u_score, "comment": u_comment, "count": u_count, "status": "watched"}
                                 update_db(a_id, "add", u_score, u_comment, u_count, status="watched")
                                 st.session_state.action_cnt += 1
                                 st.rerun()
                             
-                            # 보관 / 하차 버튼 가로 배치
                             bw1, bw2 = st.columns(2)
                             with bw1:
                                 if st.button("보관", key=f"btn_wish_{a_id}_{ac}", use_container_width=True):
@@ -1943,12 +1787,11 @@ else:
 
             st.write("") 
 
-    # 하단 네비게이션 로직 (수동 로딩)
+    # 하단 네비게이션 로직
     st.write("---")
     if st.session_state.is_random_mode:
         if st.button("🎲 랜덤 작품 더 보기", use_container_width=True):
             with st.spinner("새로운 랜덤 작품 찾는 중..."):
-                # 필터링 조건 정리
                 target_ids = None
                 exclude_ids = None
                 current_watched = st.session_state.watched_list or {}
@@ -1970,7 +1813,6 @@ else:
                     include_adult=s_adult
                 )
                 if new_random:
-                    # 중복 제거하며 추가
                     existing_ids = {m['id'] for m in st.session_state.all_media}
                     for item in new_random['media']:
                         if item['id'] not in existing_ids:

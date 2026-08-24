@@ -256,6 +256,36 @@ st.markdown("""
         display: block !important;
         width: 100% !important;
     }
+
+    @media (max-width: 768px) {
+        /* 메인 카드 영역만 2열 래핑 */
+        .main [data-testid="stHorizontalBlock"]:not([data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"]) {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+        }
+
+        /* 4칸으로 나뉜 컬럼을 2개씩 1줄로 고정 */
+        .main [data-testid="stHorizontalBlock"]:not([data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"]) > [data-testid="column"] {
+            flex: 1 1 calc(50% - 8px) !important;
+            min-width: calc(50% - 8px) !important;
+            max-width: calc(50% - 8px) !important;
+            padding: 0 !important;
+        }
+
+        /* 모바일용 이미지 높이 축소 (비율 유지) */
+        .stImage > img, [data-testid="stImage"] img {
+            height: 240px !important;
+        }
+
+        /* 모바일 제목 폰트 및 높이 축소 */
+        .anime-title-box {
+            font-size: 0.95rem !important;
+            height: 2.8rem !important;
+            line-height: 1.4rem !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 

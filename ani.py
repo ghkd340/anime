@@ -284,7 +284,6 @@ DEFAULT_PLATFORMS = {
     "넷플릭스": "https://www.netflix.com/search?q={query}",
     "유튜브 (PV/OST)": "https://www.youtube.com/results?search_query={query}+애니",
     "나무위키": "https://namu.wiki/w/{query}",
-    "MyAnimeList (MAL)": "https://myanimelist.net/anime.php?q={query}",
     "구글 검색": "https://www.google.com/search?q={query}+애니"
 }
 

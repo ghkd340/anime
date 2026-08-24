@@ -258,76 +258,38 @@ st.markdown("""
     }
 
     @media (max-width: 768px) {
-        /* 1. 4개 컬럼 카드 컨테이너를 모바일 2열 그리드로 강제 전환 */
-        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(4)) {
-            display: grid !important;
-            grid-template-columns: repeat(2, 1fr) !important;
-            gap: 10px !important;
-            width: 100% !important;
-        }
-
-        /* 2. 각 카드 컬럼의 여백 및 너비 최적화 */
-        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(4)) > [data-testid="column"] {
-            width: 100% !important;
-            min-width: 0 !important;
-            max-width: 100% !important;
-            flex: none !important;
-            padding: 0 !important;
-            margin-bottom: 12px !important;
-        }
-
-        /* 3. 모바일 카드 포스터 이미지 크기 축소 */
+        /* 이미지 높이 축소 */
         .stImage > img, [data-testid="stImage"] img {
-            height: 230px !important;
-        }
-        .anime-card-container {
-            max-width: 100% !important;
-            width: 100% !important;
+            height: 220px !important;
         }
 
-        /* 4. 모바일 텍스트 및 코멘트 박스 높이 축소 */
+        /* 텍스트 크기 조절 */
         .anime-title-box {
-            font-size: 0.88rem !important;
-            height: 2.5rem !important;
-            line-height: 1.25rem !important;
-        }
-        .user-comment-box, .empty-comment-box {
-            height: 48px !important;
-            font-size: 0.75rem !important;
-            padding: 4px 6px !important;
+            font-size: 0.85rem !important;
+            height: 2.4rem !important;
+            line-height: 1.2rem !important;
         }
 
-        /* 5. 카드 하단 3열 버튼 컨테이너 (c1, c2, c3) 가로 1줄 배치 */
-        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(3)):not(:has(> [data-testid="column"]:nth-child(4))) {
+        /* 카드 하단 3개 버튼(c1, c2, c3) 가로 1줄 배치 및 크기 축소 */
+        div[data-testid="column"] [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            gap: 3px !important;
-            width: 100% !important;
-        }
-        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(3)):not(:has(> [data-testid="column"]:nth-child(4))) > [data-testid="column"] {
-            width: 33.33% !important;
-            min-width: 0 !important;
-            flex: 1 1 0 !important;
-            padding: 0 !important;
+            gap: 2px !important;
         }
 
-        /* 6. 🔥 핵심: 카드 하단 3개 버튼(상세, 🔍, 시청/수정) 크기 및 폰트 축소 */
-        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(3)):not(:has(> [data-testid="column"]:nth-child(4))) button,
-        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(3)):not(:has(> [data-testid="column"]:nth-child(4))) div[data-testid="stPopover"] > button {
-            min-height: 1.8rem !important;
-            height: 1.8rem !important;
-            padding: 0px 2px !important;
+        /* 버튼 및 팝오버 내부 크기 직접 축소 */
+        div[data-testid="column"] [data-testid="stHorizontalBlock"] button {
+            min-height: 28px !important;
+            height: 28px !important;
+            padding: 0 2px !important;
             font-size: 0.72rem !important;
-            line-height: 1 !important;
         }
 
-        /* 버튼 내부 텍스트 태그 줄바꿈 방지 */
-        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(3)):not(:has(> [data-testid="column"]:nth-child(4))) button p,
-        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(3)):not(:has(> [data-testid="column"]:nth-child(4))) div[data-testid="stPopover"] > button p {
+        div[data-testid="column"] [data-testid="stHorizontalBlock"] button * {
             font-size: 0.72rem !important;
             white-space: nowrap !important;
         }
+    }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1658,9 +1620,9 @@ st.divider()
 if not anime_list: 
     st.info("데이터가 없습니다.")
 else:
-    for i in range(0, len(anime_list), 4):
-        cols = st.columns(4)
-        chunk = anime_list[i:i+4]
+    for i in range(0, len(anime_list), 2):
+        cols = st.columns(2)
+        chunk = anime_list[i:i+2]
         for j, anime in enumerate(chunk):
             a_id = anime['id']
             current_watched = st.session_state.watched_list or {}

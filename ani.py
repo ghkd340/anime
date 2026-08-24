@@ -207,7 +207,7 @@ st.markdown("""
         background: rgba(128, 128, 128, 0.08);
         border-radius: 6px;
         overflow: hidden;
-        height: 72px;
+        height: 76px;
         box-sizing: border-box;
     }
     .char-side, .va-side {
@@ -221,7 +221,7 @@ st.markdown("""
     }
     .char-img, .va-img {
         width: 54px !important;
-        height: 72px !important;
+        height: 76px !important;
         object-fit: cover !important;
         border-radius: 0 !important;
         box-shadow: none !important;
@@ -231,7 +231,7 @@ st.markdown("""
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        padding: 8px 0;
+        padding: 6px 0;
         height: 100%;
         box-sizing: border-box;
         overflow: hidden;
@@ -250,6 +250,9 @@ st.markdown("""
     .char-sub, .va-sub {
         font-size: 0.72rem;
         color: var(--secondary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     /* 성우 검색 시 카드 */
@@ -302,6 +305,31 @@ st.markdown("""
         white-space: nowrap;
         text-align: center;
         margin-bottom: 6px;
+    }
+
+    .va-section-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        background: rgba(128, 128, 128, 0.08);
+        border-radius: 8px;
+        margin-top: 15px;
+        margin-bottom: 12px;
+    }
+    .va-section-avatar {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    .va-section-name {
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+    .va-section-sub {
+        font-size: 0.8rem;
+        color: var(--secondary-text-color);
     }
 
     div[data-testid="stTabs"] button {
@@ -617,16 +645,34 @@ def get_watched_metadata(ids, p_bar_container=None):
             
     return {i: st.session_state.metadata_storage[i] for i in clean_ids if i in st.session_state.metadata_storage}
 
-# --- 성우 검색 시 캐릭터 일러스트 및 메타데이터 함께 조회 ---
+# --- 성우 검색 시 매칭되는 성우들의 전체 출연작을 최대 500개까지 대량 조회 ---
 @st.cache_data(ttl=86400, show_spinner=False)
-def fetch_va_characters_and_media(va_name, max_items=250):
+def fetch_va_groups(va_name):
     if not va_name: return []
     
-    query = '''
-    query ($va: String, $page: Int) {
-      Staff (search: $va) {
-        id
-        name { full native }
+    # 1. 성우 목록(최대 4명) 가져오기
+    staff_search_query = '''
+    query ($va: String) {
+      Page (page: 1, perPage: 4) {
+        staff (search: $va) {
+          id
+          name { full native }
+          image { large medium }
+        }
+      }
+    }
+    '''
+    
+    data, errors = safe_anilist_request(staff_search_query, {'va': va_name})
+    if not data or not data.get('Page', {}).get('staff'):
+        return []
+        
+    staff_list = data['Page']['staff']
+    
+    # 2. 성우의 출연작을 최대 500개(50개씩 10페이지)까지 긁어오는 쿼리
+    media_query = '''
+    query ($id: Int, $page: Int) {
+      Staff (id: $id) {
         characterMedia (page: $page, perPage: 50, sort: POPULARITY_DESC) {
           pageInfo {
             hasNextPage
@@ -651,10 +697,7 @@ def fetch_va_characters_and_media(va_name, max_items=250):
               startDate { year month day }
               format
               studios(isMain: true) {
-                nodes {
-                  id
-                  name
-                }
+                nodes { id name }
               }
             }
           }
@@ -663,56 +706,72 @@ def fetch_va_characters_and_media(va_name, max_items=250):
     }
     '''
     
-    all_items = []
-    seen_char_ids = set()
-    current_page = 1
-    
-    while current_page <= 6:
-        data, errors = safe_anilist_request(query, {'va': va_name, 'page': current_page})
-        if not data or not data.get('Staff'):
-            break
-            
-        char_media = data['Staff'].get('characterMedia', {})
-        edges = char_media.get('edges') or []
-        if not edges:
-            break
-            
-        for e in edges:
-            node = e.get('node') or {}
-            chars = e.get('characters') or []
-            media_id = node.get('id')
-            
-            if node.get('type') == 'ANIME' and node.get('format') != 'MUSIC' and media_id and chars:
-                char_info = chars[0]
-                char_id = char_info.get('id')
-                
-                if char_id and char_id not in seen_char_ids:
-                    seen_char_ids.add(char_id)
-                    all_items.append({
-                        "anime_id": media_id,
-                        "anime_title": node.get('title', {}).get('native') or node.get('title', {}).get('romaji') or "Unknown",
-                        "anime_cover": node.get('coverImage', {}).get('large') or "https://via.placeholder.com/60x80?text=No+Image",
-                        "season": node.get('season'),
-                        "seasonYear": node.get('seasonYear'),
-                        "genres": node.get('genres') or [],
-                        "isAdult": node.get('isAdult', False),
-                        "averageScore": node.get('averageScore') or 0,
-                        "popularity": node.get('popularity') or 0,
-                        "startDate": node.get('startDate') or {},
-                        "format": node.get('format'),
-                        "studios": node.get('studios', {}).get('nodes', []),
-                        "char_id": char_id,
-                        "char_name": char_info.get('name', {}).get('native') or char_info.get('name', {}).get('full') or "Unknown",
-                        "char_img": char_info.get('image', {}).get('large') or char_info.get('image', {}).get('medium') or "https://via.placeholder.com/150x220?text=NO+IMAGE"
-                    })
-                
-        has_next = char_media.get('pageInfo', {}).get('hasNextPage', False)
-        if not has_next or len(all_items) >= max_items:
-            break
-            
-        current_page += 1
+    def fetch_all_roles_for_staff(staff):
+        s_id = staff['id']
+        seen_char_ids = set()
+        roles = []
+        page = 1
         
-    return all_items
+        while page <= 10:  # 🚀 성우 1명당 최대 500개까지 전수 수집하도록 상향
+            res_data, res_err = safe_anilist_request(media_query, {'id': s_id, 'page': page})
+            if not res_data or not res_data.get('Staff'):
+                break
+                
+            char_media = res_data['Staff'].get('characterMedia', {})
+            edges = char_media.get('edges') or []
+            if not edges:
+                break
+                
+            for e in edges:
+                node = e.get('node') or {}
+                chars = e.get('characters') or []
+                media_id = node.get('id')
+                
+                if node.get('type') == 'ANIME' and node.get('format') != 'MUSIC' and media_id and chars:
+                    char_info = chars[0]
+                    char_id = char_info.get('id')
+                    
+                    if char_id and char_id not in seen_char_ids:
+                        seen_char_ids.add(char_id)
+                        roles.append({
+                            "anime_id": media_id,
+                            "anime_title": node.get('title', {}).get('native') or node.get('title', {}).get('romaji') or "Unknown",
+                            "anime_cover": node.get('coverImage', {}).get('large') or "https://via.placeholder.com/60x80?text=No+Image",
+                            "season": node.get('season'),
+                            "seasonYear": node.get('seasonYear'),
+                            "genres": node.get('genres') or [],
+                            "isAdult": node.get('isAdult', False),
+                            "averageScore": node.get('averageScore') or 0,
+                            "popularity": node.get('popularity') or 0,
+                            "startDate": node.get('startDate') or {},
+                            "format": node.get('format'),
+                            "studios": node.get('studios', {}).get('nodes', []),
+                            "char_id": char_id,
+                            "char_name": char_info.get('name', {}).get('native') or char_info.get('name', {}).get('full') or "Unknown",
+                            "char_img": char_info.get('image', {}).get('large') or char_info.get('image', {}).get('medium') or "https://via.placeholder.com/150x220?text=NO+IMAGE"
+                        })
+            
+            if not char_media.get('pageInfo', {}).get('hasNextPage', False):
+                break
+            page += 1
+            
+        return {
+            "staff_id": staff['id'],
+            "name_full": staff.get('name', {}).get('full') or "Unknown",
+            "name_native": staff.get('name', {}).get('native') or "",
+            "staff_image": staff.get('image', {}).get('large') or staff.get('image', {}).get('medium') or "",
+            "roles": roles
+        }
+    
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(fetch_all_roles_for_staff, st_item) for st_item in staff_list]
+        for f in futures:
+            res = f.result()
+            if res and res['roles']:
+                results.append(res)
+                
+    return results
 
 # --- 제작사 검색 시 제작사의 모든 작품을 한 번에 가져오는 전용 함수 ---
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -862,10 +921,11 @@ if 'custom_platforms' not in st.session_state: st.session_state.custom_platforms
 
 if st.session_state.genre_to_add:
     new_g = st.session_state.genre_to_add
-    current_g = list(st.session_state.genre_filter)
+    current_g_str = st.query_params.get("genres", "")
+    current_g = [g for g in current_g_str.split(",") if g] if current_g_str else []
     if new_g not in current_g:
         current_g.append(new_g)
-        st.session_state.genre_filter = current_g
+        st.query_params["genres"] = ",".join(current_g)
     st.session_state.genre_to_add = None
 
 def run_auth_shield():
@@ -1081,10 +1141,10 @@ def show_anime_modal_dialog(anime):
     title = anime['title']['native'] or anime['title']['romaji']
     
     tab_record, tab_overview, tab_characters, tab_watch = st.tabs([
-        "기록 & 평점",
-        "개요", 
-        "성우/등장인물", 
-        "시청 플랫폼"
+        "Record (기록 & 평점)",
+        "Overview (개요)", 
+        "Characters (성우/등장인물)", 
+        "Watch (시청 플랫폼)"
     ])
     
     # 1. 내 기록 & 평점 탭
@@ -1222,8 +1282,11 @@ def show_anime_modal_dialog(anime):
                 ko_g = KO_GENRE_MAP.get(g, g)
                 with g_cols[idx % 4]:
                     if st.button(ko_g, key=f"dlg_g_btn_{a_id}_{g}", use_container_width=True):
-                        if ko_g not in st.session_state.genre_filter:
-                            st.session_state.genre_to_add = ko_g
+                        current_g_str = st.query_params.get("genres", "")
+                        current_g = [x for x in current_g_str.split(",") if x] if current_g_str else []
+                        if ko_g not in current_g:
+                            current_g.append(ko_g)
+                            st.query_params["genres"] = ",".join(current_g)
                             st.rerun()
             st.write("")
         
@@ -1246,18 +1309,19 @@ def show_anime_modal_dialog(anime):
         if not char_edges:
             st.info("등록된 등장인물 및 성우 정보가 없습니다.")
         else:
-            st.caption("💡 성우 이름을 클릭하면 해당 성우의 다른 출연작들을 검색합니다.")
+            st.caption("💡 성우 버튼을 클릭하면 해당 성우의 다른 출연작들을 검색합니다.")
             cols = st.columns(3)
             for idx, edge in enumerate(char_edges):
                 char_node = edge.get('node', {})
-                char_name = char_node.get('name', {}).get('full') or char_node.get('name', {}).get('native') or "Unknown"
+                char_name = char_node.get('name', {}).get('native') or char_node.get('name', {}).get('full') or "Unknown"
                 char_img = char_node.get('image', {}).get('medium') or "https://via.placeholder.com/60x80?text=No+Image"
                 role = edge.get('role', 'Main')
                 role_label = "Main" if role == "MAIN" else "Supporting"
                 
                 vas = edge.get('voiceActors', [])
                 va = vas[0] if vas else None
-                va_name = (va.get('name', {}).get('native') or va.get('name', {}).get('full')) if va else ""
+                va_full_name = va.get('name', {}).get('full', "") if va else ""
+                va_native_name = va.get('name', {}).get('native', "") if va else ""
                 va_img = va.get('image', {}).get('medium') if va else "https://via.placeholder.com/60x80?text=No+Image"
                 va_lang = va.get('languageV2', 'Japanese') if va else ""
                 
@@ -1274,16 +1338,17 @@ def show_anime_modal_dialog(anime):
                         <div class="va-side">
                             <div class="va-meta">
                                 <div class="char-sub">{va_lang}</div>
+                                <div class="char-sub" style="font-weight:600; color:var(--text-color);" title="{va_native_name}">{va_native_name}</div>
                             </div>
                             <img src="{va_img}" class="va-img" />
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    if va_name:
-                        if st.button(f"🎙️ {va_name}", key=f"btn_filter_va_{a_id}_{idx}", use_container_width=True):
+                    if va_full_name:
+                        if st.button(f"🎙️ {va_full_name}", key=f"btn_filter_va_{a_id}_{idx}", use_container_width=True):
                             st.query_params.clear()
-                            st.query_params["va"] = va_name
+                            st.query_params["va"] = va_full_name
                             st.session_state.all_media = []
                             st.session_state.page = 1
                             st.rerun()
@@ -1678,7 +1743,7 @@ with st.sidebar:
     st.header("🔍 검색 및 필터")
 
     def reset_all_filters():
-        for key in ["q", "va", "studio"]:
+        for key in ["q", "va", "studio", "year", "season", "genres", "ex_genres", "watch", "adult"]:
             if key in st.query_params:
                 del st.query_params[key]
         
@@ -1688,16 +1753,6 @@ with st.sidebar:
         st.session_state.prev_q = ""
         st.session_state.prev_va = ""
         st.session_state.prev_studio = ""
-        st.session_state.year_filter = "전체"
-        st.session_state.season_filter = "전체"
-        st.session_state.genre_filter = []
-        st.session_state.ex_genre_filter = []
-        if st.session_state.logged_in:
-            st.session_state.watch_filter = "전체"
-        
-        if "rating_filter" in st.session_state:
-            st.session_state.rating_filter = 0.0
-        
         st.session_state.all_media = []
         st.session_state.page = 1
         st.session_state.api_page = 1
@@ -1767,6 +1822,10 @@ with st.sidebar:
                 childList: true,
                 subtree: true
             });
+
+            window.parent.addEventListener('popstate', function(event) {
+                window.parent.location.reload();
+            });
         </script>
     """, height=0)
 
@@ -1795,34 +1854,74 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
+
+    # --- 새로고침 시에도 유지되는 URL 연동 필터 ---
     years = ["전체"] + list(range(datetime.now().year, 1989, -1))
-    s_year_val = st.selectbox("년도", years, key="year_filter")
+    url_year = st.query_params.get("year", "전체")
+    year_idx = years.index(int(url_year)) if url_year.isdigit() and int(url_year) in years else 0
+    s_year_val = st.selectbox("년도", years, index=year_idx, key="year_filter")
     s_year = s_year_val if s_year_val != "전체" else None
+    
+    if s_year_val != "전체" and st.query_params.get("year") != str(s_year_val):
+        st.query_params["year"] = str(s_year_val)
+    elif s_year_val == "전체" and "year" in st.query_params:
+        del st.query_params["year"]
 
     season_labels = ["전체", "1분기", "2분기", "3분기", "4분기"]
     season_values = [None, "WINTER", "SPRING", "SUMMER", "FALL"]
     season_map = dict(zip(season_labels, season_values))
     
-    s_season_label = st.selectbox("분기", season_labels, key="season_filter")
+    url_season = st.query_params.get("season", "전체")
+    season_idx = season_labels.index(url_season) if url_season in season_labels else 0
+    s_season_label = st.selectbox("분기", season_labels, index=season_idx, key="season_filter")
     s_season = season_map[s_season_label]
     
+    if s_season_label != "전체" and st.query_params.get("season") != s_season_label:
+        st.query_params["season"] = s_season_label
+    elif s_season_label == "전체" and "season" in st.query_params:
+        del st.query_params["season"]
+
     genre_map = {
         "액션": "Action", "모험": "Adventure", "코미디": "Comedy", "드라마": "Drama", "에치": "Ecchi",
         "판타지": "Fantasy", "공포": "Horror", "마법소녀": "Mahou Shoujo", "메카": "Mecha", 
         "음악": "Music", "미스터리": "Mystery", "심리": "Psychological", "로맨스": "Romance", 
         "SF": "Sci-Fi", "일상": "Slice of Life", "스포츠": "Sports", "초자연": "Supernatural", "스릴러": "Thriller"
     }
-    selected_genres = st.multiselect("포함 장르", list(genre_map.keys()), key="genre_filter")
+    
+    url_genres = [g for g in st.query_params.get("genres", "").split(",") if g in genre_map]
+    selected_genres = st.multiselect("포함 장르", list(genre_map.keys()), default=url_genres, key="genre_filter")
     s_genres = [genre_map[g] for g in selected_genres] if selected_genres else None
+    
+    if selected_genres:
+        new_g_param = ",".join(selected_genres)
+        if st.query_params.get("genres") != new_g_param:
+            st.query_params["genres"] = new_g_param
+    elif "genres" in st.query_params:
+        del st.query_params["genres"]
 
-    excluded_genres = st.multiselect("제외 장르", list(genre_map.keys()), key="ex_genre_filter")
+    url_ex_genres = [g for g in st.query_params.get("ex_genres", "").split(",") if g in genre_map]
+    excluded_genres = st.multiselect("제외 장르", list(genre_map.keys()), default=url_ex_genres, key="ex_genre_filter")
     s_ex_genres = [genre_map[g] for g in excluded_genres] if excluded_genres else None
     
+    if excluded_genres:
+        new_eg_param = ",".join(excluded_genres)
+        if st.query_params.get("ex_genres") != new_eg_param:
+            st.query_params["ex_genres"] = new_eg_param
+    elif "ex_genres" in st.query_params:
+        del st.query_params["ex_genres"]
+    
     watch_options = ["전체", "본 작품만", "볼 작품만", "안 본 작품만"]
-    s_watch = st.selectbox("시청 여부", watch_options, key="watch_filter") if st.session_state.logged_in else "전체"
+    url_watch = st.query_params.get("watch", "전체")
+    watch_idx = watch_options.index(url_watch) if url_watch in watch_options else 0
+    s_watch = st.selectbox("시청 여부", watch_options, index=watch_idx, key="watch_filter") if st.session_state.logged_in else "전체"
     only_w = (s_watch == "본 작품만")
     only_wish = (s_watch == "볼 작품만")
     only_not_w = (s_watch == "안 본 작품만")
+    
+    if s_watch != "전체" and st.query_params.get("watch") != s_watch:
+        st.query_params["watch"] = s_watch
+    elif s_watch == "전체" and "watch" in st.query_params:
+        del st.query_params["watch"]
 
     if st.button("🔄 전체 필터 초기화", use_container_width=True, on_click=reset_all_filters):
         st.rerun()
@@ -2045,60 +2144,72 @@ if not new_va_search and not new_studio_search and st.session_state.has_next and
                 else: break
             else: break
 
-# --- 성우 출연작 필터링 및 정렬 적용 로직 ---
-filtered_va_roles = []
+# --- 성우 검색 결과 처리: 성우별 인물 분리 및 정렬 ---
+filtered_va_groups = []
 if new_va_search:
-    raw_va_roles = fetch_va_characters_and_media(new_va_search)
-    current_watched = st.session_state.watched_list or {}
-    
-    for item in raw_va_roles:
-        if not s_adult and item.get('isAdult'): continue
-        if s_year is not None and item.get('seasonYear') != s_year: continue
-        if s_season is not None and item.get('season') != s_season: continue
-        if s_genres:
-            item_genres = item.get('genres', [])
-            if not all(g in item_genres for g in s_genres): continue
-        if s_ex_genres:
-            item_genres = item.get('genres', [])
-            if any(eg in item_genres for eg in s_ex_genres): continue
-        if st.session_state.logged_in:
-            m_id = item['anime_id']
-            is_w = m_id in current_watched
-            w_status = current_watched.get(m_id, {}).get('status', 'watched') if is_w else None
+    with st.spinner(f"'{new_va_search}' 성우의 전체 출연작을 불러오는 중..."):
+        raw_va_groups = fetch_va_groups(new_va_search)
+        current_watched = st.session_state.watched_list or {}
+        sort_choice = st.session_state.sort_by
+        
+        for group in raw_va_groups:
+            group_roles = []
+            for item in group['roles']:
+                if not s_adult and item.get('isAdult'): continue
+                if s_year is not None and item.get('seasonYear') != s_year: continue
+                if s_season is not None and item.get('season') != s_season: continue
+                if s_genres:
+                    item_genres = item.get('genres', [])
+                    if not all(g in item_genres for g in s_genres): continue
+                if s_ex_genres:
+                    item_genres = item.get('genres', [])
+                    if any(eg in item_genres for eg in s_ex_genres): continue
+                if st.session_state.logged_in:
+                    m_id = item['anime_id']
+                    is_w = m_id in current_watched
+                    w_status = current_watched.get(m_id, {}).get('status', 'watched') if is_w else None
+                    
+                    if only_w and (not is_w or w_status != 'watched'): continue
+                    if only_wish and (not is_w or w_status != 'wish'): continue
+                    if only_not_w and is_w: continue
+                        
+                group_roles.append(item)
             
-            if only_w and (not is_w or w_status != 'watched'): continue
-            if only_wish and (not is_w or w_status != 'wish'): continue
-            if only_not_w and is_w: continue
-                
-        filtered_va_roles.append(item)
+            if group_roles:
+                if sort_choice == "인기도순":
+                    group_roles.sort(key=lambda x: x.get('popularity', 0), reverse=True)
+                elif sort_choice == "평점순":
+                    group_roles.sort(key=lambda x: x.get('averageScore', 0) or 0, reverse=True)
+                elif sort_choice == "방영일순":
+                    group_roles.sort(key=lambda x: (
+                        x.get('startDate', {}).get('year') or 0,
+                        x.get('startDate', {}).get('month') or 0,
+                        x.get('startDate', {}).get('day') or 0
+                    ), reverse=True)
+                elif sort_choice == "내 평점순":
+                    group_roles.sort(key=lambda x: (
+                        current_watched.get(x['anime_id'], {}).get('rating', 0),
+                        current_watched.get(x['anime_id'], {}).get('count', 1)
+                    ), reverse=True)
+                elif sort_choice == "시청 순서순":
+                    def get_va_sort_key(x):
+                        val = current_watched.get(x['anime_id'], {}).get('at')
+                        if val is None: return datetime.min
+                        if isinstance(val, str):
+                            try: return datetime.fromisoformat(val.replace('Z', '+00:00'))
+                            except: return datetime.min
+                        if hasattr(val, 'tzinfo') and val.tzinfo is not None:
+                            return val.replace(tzinfo=None)
+                        return val
+                    group_roles.sort(key=get_va_sort_key, reverse=True)
 
-    sort_choice = st.session_state.sort_by
-    if sort_choice == "인기도순":
-        filtered_va_roles.sort(key=lambda x: x.get('popularity', 0), reverse=True)
-    elif sort_choice == "평점순":
-        filtered_va_roles.sort(key=lambda x: x.get('averageScore', 0) or 0, reverse=True)
-    elif sort_choice == "방영일순":
-        filtered_va_roles.sort(key=lambda x: (
-            x.get('startDate', {}).get('year') or 0,
-            x.get('startDate', {}).get('month') or 0,
-            x.get('startDate', {}).get('day') or 0
-        ), reverse=True)
-    elif sort_choice == "내 평점순":
-        filtered_va_roles.sort(key=lambda x: (
-            current_watched.get(x['anime_id'], {}).get('rating', 0),
-            current_watched.get(x['anime_id'], {}).get('count', 1)
-        ), reverse=True)
-    elif sort_choice == "시청 순서순":
-        def get_va_sort_key(x):
-            val = current_watched.get(x['anime_id'], {}).get('at')
-            if val is None: return datetime.min
-            if isinstance(val, str):
-                try: return datetime.fromisoformat(val.replace('Z', '+00:00'))
-                except: return datetime.min
-            if hasattr(val, 'tzinfo') and val.tzinfo is not None:
-                return val.replace(tzinfo=None)
-            return val
-        filtered_va_roles.sort(key=get_va_sort_key, reverse=True)
+                filtered_va_groups.append({
+                    "staff_id": group['staff_id'],
+                    "name_full": group['name_full'],
+                    "name_native": group['name_native'],
+                    "staff_image": group['staff_image'],
+                    "roles": group_roles
+                })
 
 # --- 제작사 전용 일괄 로드, 필터링 및 정렬 로직 ---
 filtered_studio_media = []
@@ -2159,7 +2270,7 @@ if new_studio_search:
 # 7. 메인 화면 렌더링
 anime_list = st.session_state.all_media
 if new_va_search:
-    total_loaded = len(filtered_va_roles)
+    total_loaded = sum(len(g['roles']) for g in filtered_va_groups)
 elif new_studio_search:
     total_loaded = len(filtered_studio_media)
 else:
@@ -2170,7 +2281,7 @@ with h_col1:
     if st.session_state.is_random_mode:
         st.title(f"🎲 랜덤 추천 결과 ({total_loaded}개)", anchor=False)
     elif new_va_search:
-        st.title(f"🎙️ 성우 '{new_va_search}' 출연작 ({total_loaded}개)", anchor=False)
+        st.title(f"🎙️ 성우 '{new_va_search}' 검색 결과 ({len(filtered_va_groups)}명 / 총 {total_loaded}개)", anchor=False)
     elif new_studio_search:
         st.title(f"🏢 '{new_studio_search}' 제작 작품 ({total_loaded}개)", anchor=False)
     elif new_search:
@@ -2198,32 +2309,48 @@ with h_col2:
 
 st.divider()
 
-# --- 성우 검색 결과 렌더링 ---
+# --- 성우 검색 결과 렌더링 (성우별 섹션 분리) ---
 if new_va_search:
-    if not filtered_va_roles:
+    if not filtered_va_groups:
         st.info("조건에 맞는 성우의 출연 정보가 없습니다.")
     else:
-        for i in range(0, len(filtered_va_roles), 6):
-            cols = st.columns(6)
-            chunk = filtered_va_roles[i:i+6]
-            for j, item in enumerate(chunk):
-                with cols[j]:
-                    st.markdown(f"""
-                    <div class="va-role-card">
-                        <img src="{item['char_img']}" class="va-char-bg" />
-                        <img src="{item['anime_cover']}" class="va-media-thumb" title="{item['anime_title']}" />
-                    </div>
-                    <div class="va-role-title" title="{item['char_name']}">{item['char_name']}</div>
-                    <div class="va-char-title" title="{item['anime_title']}">{item['anime_title']}</div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button("작품 검색", key=f"btn_va_media_{item['anime_id']}_{i}_{j}", use_container_width=True):
-                        st.query_params.clear()
-                        st.query_params["q"] = item['anime_title']
-                        st.session_state.all_media = []
-                        st.session_state.page = 1
-                        st.rerun()
-            st.write("")
+        for g_idx, group in enumerate(filtered_va_groups):
+            avatar_html = f'<img src="{group["staff_image"]}" class="va-section-avatar" />' if group["staff_image"] else ''
+            native_info = f"({group['name_native']})" if group['name_native'] else ""
+            
+            st.markdown(f"""
+            <div class="va-section-header">
+                {avatar_html}
+                <div>
+                    <div class="va-section-name">🎙️ {group['name_full']} {native_info}</div>
+                    <div class="va-section-sub">출연작 {len(group['roles'])}개</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            roles = group['roles']
+            for i in range(0, len(roles), 6):
+                cols = st.columns(6)
+                chunk = roles[i:i+6]
+                for j, item in enumerate(chunk):
+                    with cols[j]:
+                        st.markdown(f"""
+                        <div class="va-role-card">
+                            <img src="{item['char_img']}" class="va-char-bg" />
+                            <img src="{item['anime_cover']}" class="va-media-thumb" title="{item['anime_title']}" />
+                        </div>
+                        <div class="va-role-title" title="{item['char_name']}">{item['char_name']}</div>
+                        <div class="va-char-title" title="{item['anime_title']}">{item['anime_title']}</div>
+                        """, unsafe_allow_html=True)
+                        
+                        if st.button("작품 검색", key=f"btn_va_media_{g_idx}_{item['anime_id']}_{i}_{j}", use_container_width=True):
+                            st.query_params.clear()
+                            st.query_params["q"] = item['anime_title']
+                            st.session_state.all_media = []
+                            st.session_state.page = 1
+                            st.rerun()
+                st.write("")
+            st.write("---")
 
 # --- 제작사 검색 결과 렌더링 ---
 elif new_studio_search:

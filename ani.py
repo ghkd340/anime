@@ -256,41 +256,6 @@ st.markdown("""
         display: block !important;
         width: 100% !important;
     }
-
-    @media (max-width: 768px) {
-        /* 이미지 높이 축소 */
-        .stImage > img, [data-testid="stImage"] img {
-            height: 220px !important;
-        }
-
-        /* 텍스트 크기 조절 */
-        .anime-title-box {
-            font-size: 0.85rem !important;
-            height: 2.4rem !important;
-            line-height: 1.2rem !important;
-        }
-
-        /* 카드 하단 3개 버튼(c1, c2, c3) 가로 1줄 배치 및 크기 축소 */
-        div[data-testid="column"] [data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important;
-            gap: 2px !important;
-        }
-
-        /* 버튼 및 팝오버 내부 크기 직접 축소 */
-        div[data-testid="column"] [data-testid="stHorizontalBlock"] button {
-            min-height: 28px !important;
-            height: 28px !important;
-            padding: 0 2px !important;
-            font-size: 0.72rem !important;
-        }
-
-        div[data-testid="column"] [data-testid="stHorizontalBlock"] button * {
-            font-size: 0.72rem !important;
-            white-space: nowrap !important;
-        }
-    }
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1620,9 +1585,9 @@ st.divider()
 if not anime_list: 
     st.info("데이터가 없습니다.")
 else:
-    for i in range(0, len(anime_list), 2):
-        cols = st.columns(2)
-        chunk = anime_list[i:i+2]
+    for i in range(0, len(anime_list), 4):
+        cols = st.columns(4)
+        chunk = anime_list[i:i+4]
         for j, anime in enumerate(chunk):
             a_id = anime['id']
             current_watched = st.session_state.watched_list or {}

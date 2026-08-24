@@ -276,11 +276,16 @@ KO_GENRE_MAP = {
 
 # 기본 플랫폼 프리셋
 DEFAULT_PLATFORMS = {
-    "AniLife": "https://anilife.app/results?search_query={query}",
     "LinkKF": "https://linkkf.live/?s={query}",
     "라프텔 (Laftel)": "https://laftel.net/search?keyword={query}",
-    "구글 검색": "https://www.google.com/search?q={query}+애니",
-    "나무위키": "https://namu.wiki/w/{query}"
+    "네이버 시리즈온": "https://serieson.naver.com/v3/search?query={query}",
+    "왓챠 (Watcha)": "https://watcha.com/search?query={query}",
+    "티빙 (TVING)": "https://www.tving.com/search?keyword={query}",
+    "넷플릭스": "https://www.netflix.com/search?q={query}",
+    "유튜브 (PV/OST)": "https://www.youtube.com/results?search_query={query}+애니",
+    "나무위키": "https://namu.wiki/w/{query}",
+    "MyAnimeList (MAL)": "https://myanimelist.net/anime.php?q={query}",
+    "구글 검색": "https://www.google.com/search?q={query}+애니"
 }
 
 # 2. Firebase 초기화 (Secrets 구조 보정)

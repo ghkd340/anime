@@ -53,7 +53,7 @@ st.markdown("""
     .user-comment-box {
         background-color: rgba(128, 128, 128, 0.1); border-left: 3px solid #4CAF50;
         padding: 8px; border-radius: 4px; margin-bottom: 10px;
-        font-size: 0.85rem; color: var(--text-color); font-style: italic;
+        font-size: 0.85rem; color: var(--text-color);
         height: 65px; overflow-y: auto;
         box-sizing: border-box;
         white-space: pre-line;
@@ -1776,7 +1776,7 @@ else:
                 # 4. 코멘트 영역
                 user_comment = w_data.get("comment", "")
                 if is_w and user_comment:
-                    comment_html = f'<div class="user-comment-box">"{user_comment}"</div>'
+                    comment_html = f'<div class="user-comment-box">{user_comment}</div>'
                 else:
                     comment_html = '<div class="empty-comment-box"></div>'
 

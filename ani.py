@@ -258,33 +258,57 @@ st.markdown("""
     }
 
     @media (max-width: 768px) {
-        /* 메인 카드 영역만 2열 래핑 */
-        .main [data-testid="stHorizontalBlock"]:not([data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"]) {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: wrap !important;
-            gap: 8px !important;
+        /* 1. 4개 컬럼으로 이루어진 카드 컨테이너만 타겟팅하여 2열 그리드로 강제 전환 */
+        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(4)) {
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 10px !important;
+            width: 100% !important;
         }
 
-        /* 4칸으로 나뉜 컬럼을 2개씩 1줄로 고정 */
-        .main [data-testid="stHorizontalBlock"]:not([data-testid="stPopoverBody"] [data-testid="stHorizontalBlock"]) > [data-testid="column"] {
-            flex: 1 1 calc(50% - 8px) !important;
-            min-width: calc(50% - 8px) !important;
-            max-width: calc(50% - 8px) !important;
+        /* 2. 각 컬럼의 모바일 강제 100% 너비 및 여백 무효화 */
+        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(4)) > [data-testid="column"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            flex: none !important;
             padding: 0 !important;
+            margin-bottom: 12px !important;
         }
 
-        /* 모바일용 이미지 높이 축소 (비율 유지) */
+        /* 3. 모바일 카드 포스터 이미지 크기 및 카드 너비 고정 해제 */
         .stImage > img, [data-testid="stImage"] img {
             height: 240px !important;
         }
-
-        /* 모바일 제목 폰트 및 높이 축소 */
-        .anime-title-box {
-            font-size: 0.95rem !important;
-            height: 2.8rem !important;
-            line-height: 1.4rem !important;
+        .anime-card-container {
+            max-width: 100% !important;
+            width: 100% !important;
         }
+
+        /* 4. 모바일 텍스트 및 박스 높이 최적화 */
+        .anime-title-box {
+            font-size: 0.9rem !important;
+            height: 2.6rem !important;
+            line-height: 1.3rem !important;
+        }
+        .user-comment-box, .empty-comment-box {
+            height: 50px !important;
+            font-size: 0.75rem !important;
+        }
+
+        /* 5. 카드 하단 버튼 3열(c1, c2, c3)은 3등분 한 줄 유지 */
+        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(3)):not(:has(> [data-testid="column"]:nth-child(4))) {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            gap: 4px !important;
+        }
+        .main [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(3)):not(:has(> [data-testid="column"]:nth-child(4))) > [data-testid="column"] {
+            width: 33.33% !important;
+            min-width: 0 !important;
+            flex: 1 1 0 !important;
+        }
+    }
     }
 </style>
 """, unsafe_allow_html=True)

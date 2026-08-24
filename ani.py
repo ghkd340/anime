@@ -1081,10 +1081,10 @@ def show_anime_modal_dialog(anime):
     title = anime['title']['native'] or anime['title']['romaji']
     
     tab_record, tab_overview, tab_characters, tab_watch = st.tabs([
-        "Record (기록 & 평점)",
-        "Overview (개요)", 
-        "Characters (성우/등장인물)", 
-        "Watch (시청 플랫폼)"
+        "기록 & 평점",
+        "개요", 
+        "성우/등장인물", 
+        "시청 플랫폼"
     ])
     
     # 1. 내 기록 & 평점 탭

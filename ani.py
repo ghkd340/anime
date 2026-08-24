@@ -19,7 +19,6 @@ from google.auth.transport.requests import Request as GoogleRequest
 # 1. 사이트 기본 설정
 st.set_page_config(page_title="애니 아카이브", page_icon="🎬", layout="wide")
 
-# --- 쿠키 매니저 설정 (고유 키 추가) ---
 # --- 쿠키 매니저 설정 및 데이터 로드 (최상단 통합) ---
 cookie_manager = stx.CookieManager(key="anime_cookie_manager")
 all_cookies = cookie_manager.get_all()
@@ -74,8 +73,8 @@ st.markdown("""
         font-size: 0.85rem;
         font-weight: 600;
         display: inline-block;
-        height: 1.5rem;      /* 높이 고정 */
-        line-height: 1.5rem; /* 텍스트 수직 중앙 정렬 */
+        height: 1.5rem;
+        line-height: 1.5rem;
         margin-bottom: 4px;
         box-sizing: border-box;
     }
@@ -126,17 +125,14 @@ st.markdown("""
         color: rgb(255, 75, 75) !important;
     }
 
-    /* 1. 사이드바의 모든 멀티셀렉트 태그 기본 설정 (파란색) */
     [data-testid="stSidebar"] [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
         background-color: #2e67ff !important;
     }
     
-    /* 2. '제외 장르'는 '포함 장르' 바로 다음에 오는 멀티셀렉트이므로, 인접 형제 선택자(+) 활용 */
     [data-testid="stSidebar"] div:has(>[data-testid="stMultiSelect"]) + div:has(>[data-testid="stMultiSelect"]) span[data-baseweb="tag"] {
         background-color: #ff4b4b !important;
     }
 
-    /* 태그 내부 글자 및 아이콘 공통 설정 (흰색) */
     span[data-baseweb="tag"] span, span[data-baseweb="tag"] div {
         color: white !important;
     }
@@ -157,7 +153,6 @@ st.markdown("""
         overflow: hidden; text-overflow: ellipsis; flex-grow: 1;
     }
     
-    /* 사이드바 내 중첩된 익스팬더(분기별 통계)의 버튼을 링크 스타일로 변경 */
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] button {
         background: transparent !important;
         border: none !important;
@@ -184,7 +179,6 @@ st.markdown("""
         text-decoration: none !important;
     }
 
-    /* 분기별 통계 모바일 한 줄 유지 및 세로 중앙 정렬 */
     [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpander"] [data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
@@ -262,7 +256,7 @@ st.markdown("""
     .va-role-card {
         position: relative;
         width: 100%;
-        height: 240px; /* 카드 전체 높이를 늘려 비율 확보 */
+        height: 240px;
         border-radius: 8px;
         overflow: hidden;
         background-color: #1e232d;
@@ -283,8 +277,8 @@ st.markdown("""
         position: absolute;
         bottom: 8px;
         right: 8px;
-        width: 60px !important;   /* 가로 크기 확대 */
-        height: 84px !important;  /* 세로 크기 확대 */
+        width: 60px !important;
+        height: 84px !important;
         object-fit: cover;
         border-radius: 6px;
         border: 2px solid rgba(255, 255, 255, 0.9);
@@ -318,7 +312,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 0. 글로벌 인증 저장소 (세션 유실 시에도 서버 메모리에 보존)
+# 0. 글로벌 인증 저장소
 @st.cache_resource
 def get_oauth_storage():
     return {}
@@ -333,7 +327,6 @@ KO_GENRE_MAP = {
     "Sci-Fi": "SF", "Slice of Life": "일상", "Sports": "스포츠", "Supernatural": "초자연", "Thriller": "스릴러"
 }
 
-# 기본 플랫폼 프리셋
 DEFAULT_PLATFORMS = {
     "LinkKF": "https://linkkf.live/?s={query}",
     "라프텔 (Laftel)": "https://laftel.net/search?keyword={query}",
@@ -346,7 +339,7 @@ DEFAULT_PLATFORMS = {
     "구글 검색": "https://www.google.com/search?q={query}+애니"
 }
 
-# 2. Firebase 초기화 (Secrets 구조 보정)
+# 2. Firebase 초기화
 @st.cache_resource
 def init_firebase():
     if not firebase_admin._apps:
@@ -392,7 +385,7 @@ def init_firebase():
 db = init_firebase()
 app_id = "k-anime-archive-v3"
 
-# --- DB 함수 (캐싱 및 구조 최적화) ---
+# --- DB 함수 ---
 @st.cache_data(ttl=600, show_spinner=False)
 def load_user_data_from_db(user_email):
     if not db or not user_email: return {}, {}
@@ -426,12 +419,11 @@ def load_user_data_from_db(user_email):
     except Exception as e:
         err_msg = str(e)
         if "Quota exceeded" in err_msg or "ResourceExhausted" in err_msg or "429" in err_msg:
-            st.error("🚨 **데이터베이스 일일 사용 한도를 초과했습니다.**\n\nFirebase 무료 요금제의 일일 읽기 제한(50,000회)에 도달하여 데이터를 가져올 수 없습니다. **내일 오후 4~5시경**에 한도가 리셋되면 정상 이용이 가능합니다. 최적화가 완료되었으므로 리셋 후에는 다시 발생할 확률이 매우 낮습니다.")
+            st.error("🚨 **데이터베이스 일일 사용 한도를 초과했습니다.**\n\nFirebase 무료 요금제의 일일 읽기 제한(50,000회)에 도달하여 데이터를 가져올 수 없습니다. **내일 오후 4~5시경**에 한도가 리셋되면 정상 이용이 가능합니다.")
             return {}, {}
         raise e
 
 def sync_user_data_to_session(user_email):
-    """DB에서 사용자 데이터를 가져와 세션에 동기화합니다."""
     watched, prefs = load_user_data_from_db(user_email)
     st.session_state.watched_list = watched
     if prefs:
@@ -507,7 +499,7 @@ def update_user_setting(key, value):
     threading.Thread(target=run_in_thread, daemon=True).start()
     load_user_data_from_db.clear()
 
-# --- API 공통 요청 함수 (429 에러 대응 및 재시도 로직) ---
+# --- API 공통 요청 함수 ---
 def safe_anilist_request(query, variables, max_retries=3):
     url = 'https://graphql.anilist.co'
     for i in range(max_retries):
@@ -538,7 +530,7 @@ def safe_anilist_request(query, variables, max_retries=3):
             time.sleep(1 * (i + 1))
     return None, "최대 재시도 횟수를 초과했습니다."
 
-# --- 유틸리티 함수 (Module Level) ---
+# --- 유틸리티 함수 ---
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_metadata_from_api(missing_ids):
     if not missing_ids: return {}
@@ -616,9 +608,9 @@ def get_watched_metadata(ids, p_bar_container=None):
             
     return {i: st.session_state.metadata_storage[i] for i in clean_ids if i in st.session_state.metadata_storage}
 
-# --- 성우 검색 시 캐릭터 일러스트 및 대표 애니메이션 정보 조회 (캐릭터 중복 방지) ---
+# --- 성우 검색 시 캐릭터 일러스트 및 메타데이터(필터링용) 함께 조회 ---
 @st.cache_data(ttl=86400, show_spinner=False)
-def fetch_va_characters_and_media(va_name, max_items=150):
+def fetch_va_characters_and_media(va_name, max_items=250):
     if not va_name: return []
     
     query = '''
@@ -640,6 +632,10 @@ def fetch_va_characters_and_media(va_name, max_items=150):
               id
               title { native romaji }
               coverImage { large extraLarge }
+              season
+              seasonYear
+              genres
+              isAdult
               type
             }
           }
@@ -652,7 +648,7 @@ def fetch_va_characters_and_media(va_name, max_items=150):
     seen_char_ids = set()
     current_page = 1
     
-    while current_page <= 6:  # 최대 300개 항목 탐색
+    while current_page <= 6:
         data, errors = safe_anilist_request(query, {'va': va_name, 'page': current_page})
         if not data or not data.get('Staff'):
             break
@@ -671,13 +667,16 @@ def fetch_va_characters_and_media(va_name, max_items=150):
                 char_info = chars[0]
                 char_id = char_info.get('id')
                 
-                # 동일 캐릭터 ID 중복 방지 (가장 인기도 높은 작품 기준으로 1개만 유지)
                 if char_id and char_id not in seen_char_ids:
                     seen_char_ids.add(char_id)
                     all_items.append({
                         "anime_id": media_id,
                         "anime_title": node.get('title', {}).get('native') or node.get('title', {}).get('romaji') or "Unknown",
                         "anime_cover": node.get('coverImage', {}).get('large') or "https://via.placeholder.com/60x80?text=No+Image",
+                        "season": node.get('season'),
+                        "seasonYear": node.get('seasonYear'),
+                        "genres": node.get('genres') or [],
+                        "isAdult": node.get('isAdult', False),
                         "char_id": char_id,
                         "char_name": char_info.get('name', {}).get('native') or char_info.get('name', {}).get('full') or "Unknown",
                         "char_img": char_info.get('image', {}).get('large') or char_info.get('image', {}).get('medium') or "https://via.placeholder.com/150x220?text=NO+IMAGE"
@@ -769,7 +768,6 @@ if 'time_unit' not in st.session_state: st.session_state.time_unit = "시간"
 if 'selected_platforms' not in st.session_state: st.session_state.selected_platforms = ["AniLife", "LinkKF"]
 if 'custom_platforms' not in st.session_state: st.session_state.custom_platforms = {}
 
-# --- 장르 추가 대기열 처리 ---
 if st.session_state.genre_to_add:
     new_g = st.session_state.genre_to_add
     current_g = list(st.session_state.genre_filter)
@@ -778,7 +776,6 @@ if st.session_state.genre_to_add:
         st.session_state.genre_filter = current_g
     st.session_state.genre_to_add = None
 
-# --- [앱 보호막: 인증 확인 전까지 UI 차단] ---
 def run_auth_shield():
     if st.query_params.get("logout") == "true":
         redundant_params = ["state", "code", "scope", "authuser", "prompt", "iss"]
@@ -1022,7 +1019,7 @@ def show_anime_modal_dialog(anime):
                 st.session_state.page = 1
                 st.rerun()
 
-    # 2. 성우 / 캐릭터 탭 (한 줄에 3개씩 배치)
+    # 2. 성우 / 캐릭터 탭
     with tab_characters:
         with st.spinner("캐릭터 및 성우 정보를 불러오는 중..."):
             char_edges = fetch_anime_characters(a_id)
@@ -1169,7 +1166,7 @@ def show_anime_modal_dialog(anime):
                 st.markdown("##### ➕ 새로운 시청 기록 남기기")
                 u_score = st.slider("내 평점", 0.0, 5.0, 5.0, 0.1, format="%.1f", key=f"dlg_score_new_{a_id}_{ac}")
                 u_count = st.number_input("시청 횟수 / 마지막 화수", min_value=1, value=1, step=1, key=f"dlg_count_new_{a_id}_{ac}")
-                u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"dlg_comm_new_{a_id}_{ac}")
+                u_comment = st.text_area("코멘트", placeholder="짧은 감상평을 남겨주세요", key=f"comm_new_{a_id}_{ac}")
                 
                 if st.button("시청 완료 저장", key=f"dlg_btn_save_{a_id}_{ac}", use_container_width=True, type="primary"):
                     if st.session_state.watched_list is None: st.session_state.watched_list = {}
@@ -1331,7 +1328,7 @@ with st.sidebar:
         watched_count_display = stats.get("watched_count_stats", 0)
         quarterly_stats = stats.get("quarterly_stats", {})
 
-        # 1. 설정 팝오버 (시간 단위 + 플랫폼 커스텀)
+        # 1. 설정 팝오버
         st.write("<div style='height: 10px;'></div>", unsafe_allow_html=True)
         col_title, col_opt = st.columns([3, 1])
         with col_title:
@@ -1388,7 +1385,6 @@ with st.sidebar:
         # 3. 통합 통계 카드
         st.markdown(f"""
         <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(76, 175, 80, 0.2); margin-bottom: 15px;">
-            <!-- 상단 3칸 -->
             <div style="display: flex; justify-content: space-around; align-items: center; text-align: center; margin-bottom: 15px;">
                 <div>
                     <div style="font-size: 1.2rem; font-weight: bold; color: #4CAF50;">{watched_count_display}</div>
@@ -1405,7 +1401,6 @@ with st.sidebar:
                     <div style="font-size: 0.65rem; color: var(--secondary-text-color);">시청 화수</div>
                 </div>
             </div>
-            <!-- 하단 2칸 -->
             <div style="border-top: 1px dashed rgba(76, 175, 80, 0.2); padding-top: 15px; display: flex; justify-content: space-around; align-items: center; text-align: center;">
                 <div style="flex: 1;">
                     <div style="font-size: 1.1rem; font-weight: bold; color: #4CAF50;">{total_time_str}</div>
@@ -1717,7 +1712,7 @@ with st.sidebar:
             target_ids = None
             exclude_ids = None
             current_watched = st.session_state.watched_list or {}
-            
+
             if only_w:
                 target_ids = [aid for aid, info in current_watched.items() if info.get('status', 'watched') == 'watched']
                 if not target_ids: target_ids = [0]
@@ -1779,7 +1774,7 @@ if st.session_state.last_filters != current_filters:
     st.session_state.is_random_mode = False
     st.session_state.random_media = None
 
-# 데이터 로드 (일반 검색 / 필터링 모드)
+# 데이터 로드 (일반 애니 목록 조회 시)
 if not new_va_search and st.session_state.has_next and (not st.session_state.all_media or len(st.session_state.all_media) < st.session_state.page * 24):
     target_ids = None
     exclude_ids = None
@@ -1916,16 +1911,62 @@ if not new_va_search and st.session_state.has_next and (not st.session_state.all
                 else: break
             else: break
 
+# --- 성우 출연작 필터링 적용 로직 ---
+filtered_va_roles = []
+if new_va_search:
+    raw_va_roles = fetch_va_characters_and_media(new_va_search)
+    current_watched = st.session_state.watched_list or {}
+    
+    for item in raw_va_roles:
+        # 1. 성인물 필터
+        if not s_adult and item.get('isAdult'):
+            continue
+            
+        # 2. 년도 필터
+        if s_year is not None and item.get('seasonYear') != s_year:
+            continue
+            
+        # 3. 분기 필터
+        if s_season is not None and item.get('season') != s_season:
+            continue
+            
+        # 4. 포함 장르 필터
+        if s_genres:
+            item_genres = item.get('genres', [])
+            if not all(g in item_genres for g in s_genres):
+                continue
+                
+        # 5. 제외 장르 필터
+        if s_ex_genres:
+            item_genres = item.get('genres', [])
+            if any(eg in item_genres for eg in s_ex_genres):
+                continue
+                
+        # 6. 시청 여부 필터
+        if st.session_state.logged_in:
+            m_id = item['anime_id']
+            is_w = m_id in current_watched
+            w_status = current_watched.get(m_id, {}).get('status', 'watched') if is_w else None
+            
+            if only_w and (not is_w or w_status != 'watched'):
+                continue
+            if only_wish and (not is_w or w_status != 'wish'):
+                continue
+            if only_not_w and is_w:
+                continue
+                
+        filtered_va_roles.append(item)
+
 # 7. 메인 화면 렌더링
 anime_list = st.session_state.all_media
-total_loaded = len(anime_list)
+total_loaded = len(filtered_va_roles) if new_va_search else len(anime_list)
 
 h_col1, h_col2 = st.columns([4, 1])
 with h_col1:
     if st.session_state.is_random_mode:
         st.title(f"🎲 랜덤 추천 결과 ({total_loaded}개)", anchor=False)
     elif new_va_search:
-        st.title(f"🎙️ 성우 '{new_va_search}' 출연작", anchor=False)
+        st.title(f"🎙️ 성우 '{new_va_search}' 출연작 ({total_loaded}개)", anchor=False)
     elif new_search:
         st.title(f"🔍 '{new_search}' 검색 결과 ({total_loaded}개)", anchor=False)
     else:
@@ -1951,17 +1992,14 @@ with h_col2:
 
 st.divider()
 
-# --- 성우 검색 결과 전용 화면 (캐릭터 일러스트 + 작품 썸네일 오버레이) ---
+# --- 성우 검색 결과 렌더링 (필터 적용 완료) ---
 if new_va_search:
-    with st.spinner(f"'{new_va_search}' 성우의 출연작 목록을 불러오는 중..."):
-        va_roles = fetch_va_characters_and_media(new_va_search)
-        
-    if not va_roles:
-        st.info("검색된 성우의 출연 정보가 없습니다.")
+    if not filtered_va_roles:
+        st.info("조건에 맞는 성우의 출연 정보가 없습니다.")
     else:
-        for i in range(0, len(va_roles), 6):
+        for i in range(0, len(filtered_va_roles), 6):
             cols = st.columns(6)
-            chunk = va_roles[i:i+6]
+            chunk = filtered_va_roles[i:i+6]
             for j, item in enumerate(chunk):
                 with cols[j]:
                     st.markdown(f"""
@@ -2031,7 +2069,7 @@ else:
                     else:
                         score_html = "<div class='score-box' style='color:#bbb;'>☆☆☆☆☆ 0.0</div>"
 
-                    # 4. 코멘트 영역 (줄바꿈 허용, 기울임/따옴표 제거)
+                    # 4. 코멘트 영역
                     user_comment = w_data.get("comment", "")
                     if is_w and user_comment:
                         comment_html = f'<div class="user-comment-box">{user_comment}</div>'
@@ -2052,7 +2090,6 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # 카드 하단: 모든 상세 및 기록 기능을 하나로 통합한 팝업 버튼
                     btn_modal_label = "🎬 상세 정보 & 기록" if st.session_state.logged_in else "🎬 상세 정보"
                     if st.button(btn_modal_label, key=f"btn_open_dlg_{a_id}", use_container_width=True, type="primary"):
                         show_anime_modal_dialog(anime)

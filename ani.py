@@ -650,6 +650,7 @@ def get_watched_metadata(ids, p_bar_container=None):
 def fetch_va_groups(va_name):
     if not va_name: return []
     
+    # 1. 성우 목록(최대 4명) 가져오기
     staff_search_query = '''
     query ($va: String) {
       Page (page: 1, perPage: 4) {
@@ -668,6 +669,7 @@ def fetch_va_groups(va_name):
         
     staff_list = data['Page']['staff']
     
+    # 2. 성우의 출연작을 최대 500개(50개씩 10페이지)까지 긁어오는 쿼리
     media_query = '''
     query ($id: Int, $page: Int) {
       Staff (id: $id) {
@@ -710,7 +712,7 @@ def fetch_va_groups(va_name):
         roles = []
         page = 1
         
-        while page <= 10:
+        while page <= 10:  # 🚀 성우 1명당 최대 500개까지 전수 수집하도록 상향
             res_data, res_err = safe_anilist_request(media_query, {'id': s_id, 'page': page})
             if not res_data or not res_data.get('Staff'):
                 break
@@ -891,27 +893,6 @@ def get_google_auth_flow():
     except Exception as e:
         st.error(f"구글 설정 읽기 오류: {e}")
         return None
-
-# --- 현재 연도 및 분기 자동 계산 함수 ---
-def get_current_season_info():
-    now = datetime.now()
-    year = now.year
-    month = now.month
-    if 3 <= month <= 5:
-        season_label = "2분기"
-        season_val = "SPRING"
-    elif 6 <= month <= 8:
-        season_label = "3분기"
-        season_val = "SUMMER"
-    elif 9 <= month <= 11:
-        season_label = "4분기"
-        season_val = "FALL"
-    else:
-        season_label = "1분기"
-        season_val = "WINTER"
-    return year, season_label, season_val
-
-curr_year, curr_season_label, curr_season_val = get_current_season_info()
 
 # 4. 세션 상태 초기화
 if 'logged_in' not in st.session_state:
@@ -1769,13 +1750,6 @@ with st.sidebar:
         st.session_state.search_input = ""
         st.session_state.va_search_input = ""
         st.session_state.studio_search_input = ""
-        st.session_state.year_filter = "전체"
-        st.session_state.season_filter = "전체"
-        st.session_state.genre_filter = []
-        st.session_state.ex_genre_filter = []
-        st.session_state.watch_filter = "전체"
-        st.session_state.adult_filter = False
-
         st.session_state.prev_q = ""
         st.session_state.prev_va = ""
         st.session_state.prev_studio = ""
@@ -1858,17 +1832,9 @@ with st.sidebar:
     if new_search != search_q:
         if "va" in st.query_params: del st.query_params["va"]
         if "studio" in st.query_params: del st.query_params["studio"]
-        
-        st.session_state.va_search_input = ""
-        st.session_state.studio_search_input = ""
-        st.session_state.prev_va = ""
-        st.session_state.prev_studio = ""
-
         st.query_params["q"] = new_search
         st.session_state.prev_q = new_search
         st.session_state.page = 1
-        st.session_state.api_page = 1
-        st.session_state.all_media = []
         st.rerun()
 
     if new_va_search != search_va:
@@ -1891,8 +1857,8 @@ with st.sidebar:
 
     # --- 새로고침 시에도 유지되는 URL 연동 필터 ---
     years = ["전체"] + list(range(datetime.now().year, 1989, -1))
-    url_year = st.query_params.get("year", str(curr_year))
-    year_idx = years.index(int(url_year)) if url_year.isdigit() and int(url_year) in years else years.index(curr_year)
+    url_year = st.query_params.get("year", "전체")
+    year_idx = years.index(int(url_year)) if url_year.isdigit() and int(url_year) in years else 0
     s_year_val = st.selectbox("년도", years, index=year_idx, key="year_filter")
     s_year = s_year_val if s_year_val != "전체" else None
     
@@ -1905,8 +1871,8 @@ with st.sidebar:
     season_values = [None, "WINTER", "SPRING", "SUMMER", "FALL"]
     season_map = dict(zip(season_labels, season_values))
     
-    url_season = st.query_params.get("season", curr_season_label)
-    season_idx = season_labels.index(url_season) if url_season in season_labels else season_labels.index(curr_season_label)
+    url_season = st.query_params.get("season", "전체")
+    season_idx = season_labels.index(url_season) if url_season in season_labels else 0
     s_season_label = st.selectbox("분기", season_labels, index=season_idx, key="season_filter")
     s_season = season_map[s_season_label]
     
